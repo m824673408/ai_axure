@@ -1,0 +1,4 @@
+feature: REQ-DEMO-001
+scenarios:
+  - open-history
+  - close-history

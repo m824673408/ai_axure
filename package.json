@@ -1,0 +1,39 @@
+{
+  "name": "product-prototype-core",
+  "version": "0.1.0",
+  "description": "基于 Git、Product Model 与 Feature Scope 的 AI 产品原型协作工作区",
+  "type": "module",
+  "bin": {
+    "proto": "./bin/proto.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "schemas",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "proto": "tsx src/cli.ts",
+    "verify": "npm run lint && npm run test && npm run build"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "minimatch": "^10.0.3",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.8.1",
+    "zod": "^4.0.17"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

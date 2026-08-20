@@ -1,0 +1,16 @@
+routes:
+  dashboard:
+    path: /
+    module: overview
+  attribution_rule:
+    path: /attribution/rules
+    module: attribution
+  attribution_result:
+    path: /attribution/results
+    module: attribution
+  device_query:
+    path: /attribution/devices
+    module: attribution
+  media_config:
+    path: /media/config
+    module: media

@@ -1,0 +1,20 @@
+feature:
+  id: REQ-DEMO-001
+  name: 归因规则版本管理
+
+allowed:
+  pages:
+    - attribution_rule
+  shared_components: []
+  product_model: []
+  paths:
+    - prototype/src/features/attribution-rule-version/**
+    - features/REQ-DEMO-001/**
+    - mocks/attribution-rule-versions.yaml
+    - scenarios/REQ-DEMO-001.yaml
+    - specs/attribution_rule.md
+
+forbidden:
+  - product/**
+  - components/shared/**
+  - prototype/src/components/shared/**

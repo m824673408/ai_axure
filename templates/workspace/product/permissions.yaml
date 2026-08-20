@@ -1,0 +1,13 @@
+permissions:
+  dashboard:
+    view: [admin, operator]
+  attribution_rule:
+    view: [admin, operator]
+    edit: [admin]
+  attribution_result:
+    view: [admin, operator]
+  device_query:
+    view: [admin, operator]
+  media_config:
+    view: [admin, operator]
+    edit: [admin]

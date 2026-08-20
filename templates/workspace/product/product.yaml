@@ -1,0 +1,12 @@
+product:
+  id: attribution-platform
+  name: 归因平台
+  version: 0.1.0
+
+modules:
+  - id: overview
+    name: 工作台
+  - id: attribution
+    name: 归因管理
+  - id: media
+    name: 媒体管理

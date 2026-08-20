@@ -1,0 +1,16 @@
+components:
+  PageLayout:
+    description: 标准页面标题、说明与操作区域
+    type: shared
+  SearchForm:
+    description: 响应式查询条件容器
+    type: shared
+  DataTable:
+    description: 标准数据表格容器
+    type: shared
+  StatusTag:
+    description: 带文字的语义状态标签
+    type: shared
+  MediaSelector:
+    description: 媒体筛选组件
+    type: shared

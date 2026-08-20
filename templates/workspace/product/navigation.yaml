@@ -1,0 +1,20 @@
+navigation:
+  - module: overview
+    name: 工作台
+    children:
+      - page: dashboard
+        name: 产品总览
+  - module: attribution
+    name: 归因管理
+    children:
+      - page: attribution_rule
+        name: 归因规则
+      - page: attribution_result
+        name: 归因结果
+      - page: device_query
+        name: 设备查询
+  - module: media
+    name: 媒体管理
+    children:
+      - page: media_config
+        name: 媒体配置

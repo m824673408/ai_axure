@@ -1,0 +1,19 @@
+versions:
+  - version: v3
+    updated_at: 2026-08-18 16:30:00
+    updated_by: 王倩
+    click_window: 24 小时
+    status: active
+    note: 调整回流点击窗口
+  - version: v2
+    updated_at: 2026-08-12 10:15:00
+    updated_by: 李明
+    click_window: 12 小时
+    status: archived
+    note: 增加媒体账户范围
+  - version: v1
+    updated_at: 2026-08-01 09:00:00
+    updated_by: 张宁
+    click_window: 6 小时
+    status: archived
+    note: 初始版本

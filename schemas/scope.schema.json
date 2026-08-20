@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prototype-workspace.local/schemas/scope.schema.json",
+  "title": "Prototype Workspace Feature Scope",
+  "type": "object",
+  "required": ["feature", "allowed", "forbidden"],
+  "properties": {
+    "feature": {
+      "type": "object",
+      "required": ["id", "name"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^REQ-[A-Z0-9][A-Z0-9-]*$" },
+        "name": { "type": "string", "minLength": 1 }
+      }
+    },
+    "allowed": {
+      "type": "object",
+      "required": ["pages", "shared_components", "product_model", "paths"],
+      "properties": {
+        "pages": { "type": "array", "items": { "type": "string" } },
+        "shared_components": { "type": "array", "items": { "type": "string" } },
+        "product_model": { "type": "array", "items": { "type": "string" } },
+        "paths": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "forbidden": { "type": "array", "items": { "type": "string" } }
+  }
+}

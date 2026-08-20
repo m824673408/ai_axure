@@ -1,0 +1,9 @@
+scenarios:
+  - id: open-history
+    given: 归因规则列表存在启用规则
+    when: 用户点击查看历史版本
+    then: 显示按版本号倒序排列的只读历史版本
+  - id: close-history
+    given: 版本历史 Drawer 已打开
+    when: 用户点击关闭
+    then: 返回归因规则列表且筛选状态保持不变

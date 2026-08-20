@@ -1,0 +1,15 @@
+workspace:
+  name: attribution-prototype-workspace
+  version: 0.1.0
+  base_branch: main
+
+paths:
+  product: product
+  features: features
+  prototype: prototype
+  components: components
+
+preview:
+  install_command: npm install
+  command: npm run dev -- --host 127.0.0.1
+  url: http://127.0.0.1:5173

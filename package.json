@@ -18,7 +18,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "proto": "tsx src/cli.ts",
-    "verify": "npm run lint && npm run test && npm run build"
+    "verify": "npm run lint && npm run test && npm run build",
+    "prepare": "npm run build",
+    "prepack": "npm run build"
   },
   "engines": {
     "node": ">=20"

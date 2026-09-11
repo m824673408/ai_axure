@@ -1,0 +1,27 @@
+pages:
+  dashboard:
+    name: 产品总览
+    file: prototype/src/pages/DashboardPage.tsx
+    route: dashboard
+    module: overview
+  attribution_rule:
+    name: 归因规则
+    file: prototype/src/pages/AttributionRulesPage.tsx
+    route: attribution_rule
+    module: attribution
+    spec: specs/attribution_rule.md
+  attribution_result:
+    name: 归因结果
+    file: prototype/src/pages/AttributionResultsPage.tsx
+    route: attribution_result
+    module: attribution
+  device_query:
+    name: 设备查询
+    file: prototype/src/pages/DeviceQueryPage.tsx
+    route: device_query
+    module: attribution
+  media_config:
+    name: 媒体配置
+    file: prototype/src/pages/MediaConfigPage.tsx
+    route: media_config
+    module: media

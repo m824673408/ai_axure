@@ -481,3 +481,87 @@ export function checkScopeSchema(root: string, featureId: string): ScopeSchemaRe
   stringArray(context, document, 'forbidden', '');
   return { issues: context.issues, declaredId, defined };
 }
+
+// ---------------------------------------------------------------------------
+// product/pages.yaml（Page Registry，P0-3）
+// ---------------------------------------------------------------------------
+
+export interface PageRegistryRefs {
+  routeIds: Set<string>;
+  moduleIds: Set<string>;
+  componentIds: Set<string>;
+}
+
+/**
+ * Page Registry 的显式交叉校验。
+ * 文件缺失属于 V0.1 兼容情形（不报错）；存在时校验结构、必填项、未知字段、重复文件映射与引用一致性。
+ * 错误码：L007 结构 / L008 重复 / L009 非法引用 / L010 Registry 与实现文件不一致。
+ */
+export function checkPageRegistrySchema(root: string, refs: PageRegistryRefs): LintIssue[] {
+  const file = 'product/pages.yaml';
+  const context: IssueContext = { file, issues: [] };
+  const loaded = loadDocument(root, file);
+  if (loaded.missing) return context.issues;
+  reportDuplicateKeys(context, loaded.duplicateKeyMessages);
+  if (!isPlainObject(loaded.data)) {
+    schemaIssue(context, '', `${file} 的根节点必须是对象。`, '按 schemas/pages.schema.json 组织 pages 映射。');
+    return context.issues;
+  }
+  const document = loaded.data;
+  rejectUnknownKeys(context, document, ['pages', 'schema_version'], '');
+  checkSchemaVersion(context, document);
+  const pages = requireObject(context, document, 'pages', '');
+  if (!pages) return context.issues;
+
+  const ownerOfFile = new Map<string, string>();
+  for (const [id, value] of Object.entries(pages)) {
+    const field = `pages.${id}`;
+    if (!isPlainObject(value)) {
+      schemaIssue(context, field, `${field} 必须是对象，当前类型 ${kindOf(value)}。`, `将 ${field} 改为 { name, file, route, module }。`);
+      continue;
+    }
+    rejectUnknownKeys(context, value, ['name', 'file', 'route', 'module', 'spec', 'layout'], `${field}.`);
+    const hasName = requireString(context, value, 'name', `${field}.`);
+    const hasFile = requireString(context, value, 'file', `${field}.`);
+    const hasRoute = requireString(context, value, 'route', `${field}.`);
+    const hasModule = requireString(context, value, 'module', `${field}.`);
+    void hasName;
+
+    if (hasFile) {
+      const implementation = normalizePath(value.file as string);
+      if (!existsSync(join(root, implementation))) {
+        context.issues.push({ code: 'L010', title: 'Page Registry Mismatch', message: `${field}.file 指向不存在的实现文件：${implementation}`, file, field: `${field}.file`, fix: `将 ${field}.file 改为真实存在的实现文件路径，或删除该页面登记。` });
+      }
+      const previous = ownerOfFile.get(implementation);
+      if (previous) {
+        duplicateIssue(context, `${field}.file`, `实现文件被多个页面登记：${implementation}（已被 ${previous} 登记）。`, `为 ${id} 指定各自的实现文件，或删除重复登记。`);
+      } else {
+        ownerOfFile.set(implementation, id);
+      }
+    }
+    if (hasRoute && refs.routeIds.size > 0 && !refs.routeIds.has(value.route as string)) {
+      referenceIssue(context, `${field}.route`, `${field}.route 指向不存在的路由：${value.route as string}`, `将其改为 product/routes.yaml 中已定义的 route id（${[...refs.routeIds].join('、')}）。`);
+    }
+    if (hasModule && refs.moduleIds.size > 0 && !refs.moduleIds.has(value.module as string)) {
+      referenceIssue(context, `${field}.module`, `${field}.module 指向不存在的模块：${value.module as string}`, `将其改为 product/product.yaml 中已定义的模块 id（${[...refs.moduleIds].join('、')}）。`);
+    }
+    if ('spec' in value) {
+      if (typeof value.spec !== 'string' || value.spec.trim() === '') {
+        schemaIssue(context, `${field}.spec`, `${field}.spec 必须是非空字符串。`, `将 ${field}.spec 改为 spec 文件路径，或删除该字段。`);
+      } else {
+        const specPath = normalizePath(value.spec);
+        if (!existsSync(join(root, specPath))) {
+          context.issues.push({ code: 'L010', title: 'Page Registry Mismatch', message: `${field}.spec 指向不存在的 Spec：${specPath}`, file, field: `${field}.spec`, fix: `将 ${field}.spec 改为真实存在的 spec 路径，或删除该字段。` });
+        }
+      }
+    }
+    if ('layout' in value) {
+      if (typeof value.layout !== 'string' || value.layout.trim() === '') {
+        schemaIssue(context, `${field}.layout`, `${field}.layout 必须是非空字符串。`, `将 ${field}.layout 改为已登记的公共组件 id，或删除该字段。`);
+      } else if (refs.componentIds.size > 0 && !refs.componentIds.has(value.layout as string)) {
+        referenceIssue(context, `${field}.layout`, `${field}.layout 指向未登记的组件：${value.layout as string}`, `在 components/registry.yaml 中登记该组件，或改为已登记组件 id（${[...refs.componentIds].join('、')}）。`);
+      }
+    }
+  }
+  return context.issues;
+}

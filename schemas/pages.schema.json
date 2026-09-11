@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prototype-workspace.local/schemas/pages.schema.json",
+  "title": "Prototype Workspace Page Registry",
+  "description": "product/pages.yaml。把 page_id 显式映射到 spec、实现文件、route、模块与 Layout；对应运行时校验 src/schema.ts 的 checkPageRegistrySchema。文件可省略（省略时沿用 V0.1 的文件名推导行为）。",
+  "x-schema-version": 1,
+  "type": "object",
+  "required": ["pages"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "pages": {
+      "type": "object",
+      "description": "键为稳定 page id，必须与 product/routes.yaml 的 route id、navigation.page 一致",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["name", "file", "route", "module"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "description": "产品名称（导航显示名）" },
+          "file": { "type": "string", "minLength": 1, "description": "实现文件，必须真实存在，例如 prototype/src/pages/AttributionRulesPage.tsx" },
+          "route": { "type": "string", "minLength": 1, "description": "route id，必须在 product/routes.yaml 中已定义" },
+          "module": { "type": "string", "minLength": 1, "description": "所属模块 id，必须在 product/product.yaml 的 modules 中已定义" },
+          "spec": { "type": "string", "description": "可选；填写时必须真实存在，例如 specs/attribution_rule.md" },
+          "layout": { "type": "string", "description": "可选；填写时必须是 components/registry.yaml 中已登记的组件 id" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

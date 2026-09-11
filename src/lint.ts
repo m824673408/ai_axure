@@ -4,7 +4,8 @@ import YAML from 'yaml';
 import { changedFiles, currentFeature } from './git.js';
 import { listFilesRecursive, normalizePath, readYaml } from './io.js';
 import { authorizePath, componentNameFromPath, isProductPath } from './scope.js';
-import { checkComponentRegistrySchema, checkNavigationSchema, checkProductSchema, checkRoutesSchema, checkScopeSchema, checkTerminologySchema } from './schema.js';
+import { checkComponentRegistrySchema, checkNavigationSchema, checkPageRegistrySchema, checkProductSchema, checkRoutesSchema, checkScopeSchema, checkTerminologySchema } from './schema.js';
+import { duplicateCapabilityKeys, loadComponentRegistry, loadPageRegistry } from './registry.js';
 import { loadConfig, loadNavigation, loadScope } from './workspace.js';
 import type { LintIssue, LintResult, NavigationItem } from './types.js';
 
@@ -69,13 +70,25 @@ export function runLint(root: string): LintResult {
   const navigationSchema = checkNavigationSchema(root);
   const routesSchema = checkRoutesSchema(root, productSchema.moduleIds);
   const registrySchema = checkComponentRegistrySchema(root);
-  const schemaIssues = [...productSchema.issues, ...navigationSchema.issues, ...routesSchema.issues, ...checkTerminologySchema(root), ...registrySchema.issues];
+  // P0-3：Page Registry 的显式交叉校验 + capability_key 重复检测
+  const pageRegistry = loadPageRegistry(root);
+  const capabilityRegistry = loadComponentRegistry(root);
+  const pageRegistryIssues = checkPageRegistrySchema(root, { routeIds: routesSchema.routeIds, moduleIds: productSchema.moduleIds, componentIds: registrySchema.componentIds });
+  const capabilityIssues: LintIssue[] = duplicateCapabilityKeys(capabilityRegistry).map((duplicate) => ({
+    code: 'L011' as const,
+    title: 'Duplicate Capability Key',
+    message: `capability_key「${duplicate.capabilityKey}」被多个组件声明：${duplicate.owners.join('、')}`,
+    file: 'components/registry.yaml',
+    field: 'components',
+    fix: '为其中一个组件改用能表达其独立能力的 capability_key，或合并这两个组件。',
+  }));
+  const schemaIssues = [...productSchema.issues, ...navigationSchema.issues, ...routesSchema.issues, ...checkTerminologySchema(root), ...registrySchema.issues, ...pageRegistryIssues, ...capabilityIssues];
   for (const ref of navigationSchema.moduleRefs) {
     if (productSchema.moduleIds.size > 0 && !productSchema.moduleIds.has(ref.module)) {
       schemaIssues.push({ code: 'L009', title: 'Invalid Reference', message: `导航项引用了不存在的模块：${ref.module}`, file: 'product/navigation.yaml', field: ref.field, fix: `将 ${ref.field} 改为已定义模块 id，或在 product/product.yaml 中补充该模块。` });
     }
   }
-  const checks = ['Schema: Product Model', 'Schema: Navigation', 'Schema: Routes', 'Schema: Terminology', 'Schema: Component Registry'];
+  const checks = ['Schema: Product Model', 'Schema: Navigation', 'Schema: Routes', 'Schema: Terminology', 'Schema: Component Registry', 'Schema: Page Registry', 'Capability keys'];
 
   // 文件缺失时不再抛出，由上面的 Schema 校验给出可修复的错误
   const hasRoutes = existsSync(join(root, 'product', 'routes.yaml'));
@@ -94,7 +107,7 @@ export function runLint(root: string): LintResult {
     const scope = loadScope(root, feature);
     if (scope) {
       for (const file of changed) {
-        const authorization = authorizePath(file.path, scope);
+        const authorization = authorizePath(file.path, scope, pageRegistry);
         if (authorization.allowed) continue;
         if (isProductPath(file.path)) {
           issues.push({ code: 'L006', title: 'Product Model Unauthorized', message: `当前 Feature 未授权修改 Product Model：${file.path}`, file: file.path, fix: '将文件加入 scope.yaml 的 allowed.product_model，或撤销对 Product Model 的修改。' });

@@ -59,7 +59,10 @@ describe('Studio local API', () => {
     const allowed = await request('/api/product-model', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
     expect(allowed.response.status).toBe(200);
     expect(allowed.body.product.name).toBe('新版归因平台');
-  });
+    // V0.2 起 Studio 的 status/lint/diff 端点做的工作显著变多（Page Registry 解析、git log、blob 批量读取），
+    // 该用例单独运行实测 11.9 s（V0.1 时代约 5 s），在 20 s 默认预算下全量并发运行会偶发超时。
+    // 断言未做任何放松，只把该用例的墙钟预算显式放宽到 60 s。
+  }, 60_000);
 
   it('exposes lint, diff, missing semantic configuration, and Studio-owned Preview lifecycle', async () => {
     const { root, request } = await studio();

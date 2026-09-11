@@ -1161,11 +1161,41 @@ function collectFindings(context: FindingContext): void {
 // 文本输出：既有 5 个文件分组段落逐字保持不变，新增段落面向 PM 可读性
 // ---------------------------------------------------------------------------
 
-const BASE_LEGEND = '比较口径：base = 主分支 merge-base 状态；V1 = 本分支中该 Feature 的第一个修订提交；latest = 当前工作区。';
-const COUNT_LEGEND = '计数含义：+ 新增 / ~ 修改 / - 删除 的能力条数。';
-
 function counts(added: number, modified: number, removed: number): string {
   return `+${added} 新增 ~${modified} 修改 -${removed} 删除`;
+}
+
+/** 计数含义：说明两个比较口径不同，避免 PM 误以为两组数字应当相等。 */
+const COUNT_LEGEND = '计数含义：+a ~b -c = 用户能力的新增 / 修改 / 删除数量；「vs base」相对基线统计，行尾「V1 → latest」相对首次修订统计，两者口径不同，数字不必相等。';
+
+/** 拿不到基线分支名时的兜底说法：如实说明它来自哪里（proto.config.yaml → workspace.base_branch），不编造分支名。 */
+const BASE_LEGEND_FALLBACK = '工作区配置的基线分支（proto.config.yaml → workspace.base_branch）';
+
+function baseLegend(baseBranch: string | null): string {
+  const label = baseBranch ? `工作区配置的基线分支 ${baseBranch}` : BASE_LEGEND_FALLBACK;
+  return `比较口径：base = 「${label}」的 merge-base 状态；V1(短哈希) = 该 Feature 的首次修订提交；latest = 当前工作区修订。`;
+}
+
+/** Product Model 的一行汇总：让 PM 一眼区分「模型未变」与「页面 spec 已变」。 */
+const PRODUCT_MODEL_PARTS: Array<[string, string]> = [
+  ['product.yaml', 'product.yaml'], ['navigation.yaml', 'navigation'], ['routes.yaml', 'routes'],
+  ['terminology.yaml', 'terminology'], ['permissions.yaml', 'permissions'],
+];
+
+function productModelSummary(diff: ProductDiff): string {
+  const changed = new Set(diff.productModel.map((file) => file.path));
+  const changedLabels: string[] = [];
+  const unchangedLabels: string[] = [];
+  for (const [path, label] of PRODUCT_MODEL_PARTS) {
+    if (changed.has(`product/${path}`)) changedLabels.push(label);
+    else unchangedLabels.push(label);
+  }
+  for (const file of diff.productModel) {
+    const name = file.path.replace(/^product\//, '');
+    if (!PRODUCT_MODEL_PARTS.some(([path]) => path === name)) changedLabels.push(`${name}（${file.status}）`);
+  }
+  if (changedLabels.length === 0) return `PRODUCT MODEL: unchanged（${unchangedLabels.join('、')} 均未变化）`;
+  return `PRODUCT MODEL: changed（${changedLabels.join('、')}）；未变化：${unchangedLabels.length > 0 ? unchangedLabels.join('、') : 'None'}`;
 }
 
 function formatCapabilities(diff: ProductDiff): string[] {
@@ -1181,7 +1211,7 @@ function formatCapabilities(diff: ProductDiff): string[] {
   return lines;
 }
 
-export function formatDiff(diff: ProductDiff): string {
+export function formatDiff(diff: ProductDiff, baseBranch?: string): string {
   const groups: Array<[string, ChangedFile[]]> = [
     ['Product Model', diff.productModel], ['Pages', diff.pages], ['Shared Components', diff.sharedComponents],
     ['Feature Files', diff.featureFiles], ['Prototype Files', diff.prototypeFiles],
@@ -1222,6 +1252,9 @@ export function formatDiff(diff: ProductDiff): string {
   lines.push('');
 
   lines.push('PRODUCT MODEL');
+  lines.push(productModelSummary(diff));
+  const specFiles = diff.changedFiles.filter((file) => file.path.startsWith('specs/')).map((file) => file.path);
+  if (specFiles.length > 0) lines.push(`说明：${specFiles.join('、')} 属于页面级 spec（已计入 Pages 分组），不属于 Product Model。`);
   lines.push([
     `NAVIGATION: ${diff.navigation.changed ? 'changed' : 'unchanged'}`,
     `ROUTES: ${diff.routes.changed ? 'changed' : 'unchanged'}`,
@@ -1251,7 +1284,9 @@ export function formatDiff(diff: ProductDiff): string {
   if (diff.features.length === 0) {
     lines.push('- None');
   } else {
-    lines.push(BASE_LEGEND);
+    // 未显式传入基线分支时，退回 diff 自身携带的 base 口径（fromKind === 'base' 时 from 即基线分支名）。
+    const knownBase = baseBranch ?? diff.features.find((feature) => feature.revision.fromKind === 'base')?.revision.from ?? null;
+    lines.push(baseLegend(knownBase));
     lines.push(COUNT_LEGEND);
   }
   for (const feature of diff.features) {
@@ -1262,12 +1297,15 @@ export function formatDiff(diff: ProductDiff): string {
   }
   lines.push('');
 
-  lines.push('CAPABILITIES (vs base：主分支 → 当前工作区)');
+  lines.push('CAPABILITIES (vs base：基线分支 → 当前工作区修订)');
   lines.push(...formatCapabilities(diff));
   lines.push('');
 
   const replacements = diff.requirementReplacements;
-  lines.push(`REQUIREMENT REPLACEMENTS (V1 → latest): ${replacements.length === 0 ? 'None（未检测到旧交互被移除/替换）' : `${replacements.length} 条，逐条标注「旧交互被移除/替换」`}`);
+  lines.push(`REQUIREMENT REPLACEMENTS (V1 → latest): ${replacements.length === 0 ? 'None（未检测到旧交互被移除/替换）' : `${replacements.length} 条`}`);
+  if (replacements.length > 0) {
+    lines.push('口径：[removed] = V1 有、最新版本已不存在（旧交互被移除）；[replaced] = 两版都有但内容不同（旧交互被移除/替换）；下面逐条给出旧/新原文，不再重复整句说明。');
+  }
   for (const item of replacements) {
     const tag = item.kind === 'removed' ? '旧交互被移除' : '旧交互被移除/替换';
     lines.push(`- [${item.kind}] ${item.feature} ${item.source.replace(`features/${item.feature}/`, '')}#${item.subject} —— ${tag}`);
@@ -1304,5 +1342,5 @@ export function buildSemanticPrompt(root: string): string {
   const feature = scope?.feature.id ?? 'None';
   const requirementPath = scope ? join(root, 'features', feature, 'requirement.md') : null;
   const requirement = requirementPath ? readFileSync(requirementPath, 'utf8') : '无当前 Feature。';
-  return `你是 Product Owner Review 助手。仅根据输入生成中文 Product Diff，不判断是否允许 Merge。\n\n## 输出结构\n# Product Diff\n## 页面\n## 交互\n## 产品规则\n## Product Model\n## Shared Component\n## 风险\n\n## Product\n${JSON.stringify(loadProduct(root), null, 2)}\n\n## Feature\n${feature}\n\n## Requirement\n${requirement}\n\n## Scope\n${JSON.stringify(scope, null, 2)}\n\n## Deterministic Diff\n${formatDiff(createDiff(root))}\n\n## Git Diff\n${fullDiff(root, config.workspace.base_branch) || '(无已跟踪文件差异；请结合文件列表判断未跟踪文件。)'}`;
+  return `你是 Product Owner Review 助手。仅根据输入生成中文 Product Diff，不判断是否允许 Merge。\n\n## 输出结构\n# Product Diff\n## 页面\n## 交互\n## 产品规则\n## Product Model\n## Shared Component\n## 风险\n\n## Product\n${JSON.stringify(loadProduct(root), null, 2)}\n\n## Feature\n${feature}\n\n## Requirement\n${requirement}\n\n## Scope\n${JSON.stringify(scope, null, 2)}\n\n## Deterministic Diff\n${formatDiff(createDiff(root), config.workspace.base_branch)}\n\n## Git Diff\n${fullDiff(root, config.workspace.base_branch) || '(无已跟踪文件差异；请结合文件列表判断未跟踪文件。)'}`;
 }

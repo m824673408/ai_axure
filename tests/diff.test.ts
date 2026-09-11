@@ -245,9 +245,15 @@ describe('requirement replacement (V1 → V2)', () => {
     expect(text).toContain('旧交互被移除');
     expect(text).toContain('versions.ts');
     expect(text).toContain('REMOVED ARTIFACTS (V1 → latest): 1');
-    // B1：两种比较口径必须写明含义
-    expect(text).toContain('比较口径：base = 主分支 merge-base 状态；V1 = 本分支中该 Feature 的第一个修订提交；latest = 当前工作区。');
-    expect(text).toContain('计数含义：+ 新增 / ~ 修改 / - 删除 的能力条数。');
+    // B1/必修 1：两种比较口径必须写明含义（base 基线分支 / V1 首次修订 / 计数含义 / 两者口径不同）
+    expect(formatDiff(diff, 'main')).toContain('比较口径：base = 「工作区配置的基线分支 main」的 merge-base 状态；V1(短哈希) = 该 Feature 的首次修订提交；latest = 当前工作区修订。');
+    expect(text).toContain('比较口径：base = 「工作区配置的基线分支（proto.config.yaml → workspace.base_branch）」的 merge-base 状态');
+    expect(text).toContain('计数含义：+a ~b -c = 用户能力的新增 / 修改 / 删除数量；「vs base」相对基线统计，行尾「V1 → latest」相对首次修订统计，两者口径不同，数字不必相等。');
+    // 必修 2：段首说明一次口径，逐条只保留标记
+    expect(text).toContain('口径：[removed] = V1 有、最新版本已不存在（旧交互被移除）；[replaced] = 两版都有但内容不同（旧交互被移除/替换）；');
+    // 必修 3：Product Model 一行汇总 + 页面 spec 归属说明
+    expect(text).toContain('PRODUCT MODEL: unchanged（product.yaml、navigation、routes、terminology、permissions 均未变化）');
+    expect(text).toContain('属于页面级 spec（已计入 Pages 分组），不属于 Product Model。');
     // B2：文本里每条替换只标注一次“旧交互被移除/替换”，不再逐条重复同一句式
     expect((text.match(/—— 旧交互被移除\/替换/g) ?? []).length).toBeGreaterThan(0);
     expect(text).not.toContain('小节的 V1 描述已被最新版本替换。');

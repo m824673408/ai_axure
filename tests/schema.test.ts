@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { formatLint, runLint } from '../src/lint.js';
 import { createFeature, initializeWorkspace } from '../src/workspace.js';
+import { patch } from './helpers.js';
 
 const roots: string[] = [];
 
@@ -17,15 +18,6 @@ function workspace(): string {
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-
-/** 替换文件内容；替换未生效时直接失败，避免测试因为“什么也没改”而假通过。 */
-function patch(root: string, relative: string, from: string, to: string): void {
-  const path = join(root, relative);
-  const source = readFileSync(path, 'utf8');
-  const updated = source.replace(from, to);
-  expect(updated, `补丁未命中：${relative} 中的 ${JSON.stringify(from)}`).not.toBe(source);
-  writeFileSync(path, updated, 'utf8');
-}
 
 describe('P0-1 schema validation', () => {
   it('合法的 V0.1 模板工作区仍然通过', () => {

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { git } from '../src/git.js';
 import { runLint } from '../src/lint.js';
 import { initializeWorkspace } from '../src/workspace.js';
+import { patch } from './helpers.js';
 
 /**
  * §10.3 回归：V0.1 已有的 L001–L006 行为不得退化。
@@ -19,14 +20,6 @@ function workspace(): string {
   roots.push(root);
   initializeWorkspace(root, true);
   return root;
-}
-
-function patch(root: string, relative: string, from: string, to: string): void {
-  const path = join(root, relative);
-  const source = readFileSync(path, 'utf8');
-  const updated = source.replace(from, to);
-  expect(updated, `补丁未命中：${relative}`).not.toBe(source);
-  writeFileSync(path, updated, 'utf8');
 }
 
 afterEach(() => {

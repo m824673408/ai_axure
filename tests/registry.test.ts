@@ -6,6 +6,7 @@ import { runLint } from '../src/lint.js';
 import { loadPageRegistry } from '../src/registry.js';
 import { authorizePath } from '../src/scope.js';
 import { createFeature, initializeWorkspace, loadScope } from '../src/workspace.js';
+import { appendText as append, patch } from './helpers.js';
 
 const roots: string[] = [];
 
@@ -19,18 +20,6 @@ function workspace(): string {
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-
-function patch(root: string, relative: string, from: string, to: string): void {
-  const path = join(root, relative);
-  const source = readFileSync(path, 'utf8');
-  const updated = source.replace(from, to);
-  expect(updated, `补丁未命中：${relative} 中的 ${JSON.stringify(from)}`).not.toBe(source);
-  writeFileSync(path, updated, 'utf8');
-}
-
-function append(root: string, relative: string, text: string): void {
-  writeFileSync(join(root, relative), `${readFileSync(join(root, relative), 'utf8')}\n${text}\n`, 'utf8');
-}
 
 const SCOPE_WITH_PAGE = `feature:
   id: REQ-001

@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { runLint } from '../src/lint.js';
 import { createFeature, initializeWorkspace } from '../src/workspace.js';
+import { patch, readText as read, writeText as write } from './helpers.js';
 
 const roots: string[] = [];
 
@@ -17,22 +18,6 @@ function workspace(): string {
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
-
-function read(root: string, relative: string): string {
-  return readFileSync(join(root, relative), 'utf8');
-}
-
-function patch(root: string, relative: string, from: string, to: string): void {
-  const updated = read(root, relative).replace(from, to);
-  expect(updated, `补丁未命中：${relative}`).not.toBe(read(root, relative));
-  writeFileSync(join(root, relative), updated, 'utf8');
-}
-
-function write(root: string, relative: string, content: string): void {
-  const target = join(root, relative);
-  mkdirSync(join(target, '..'), { recursive: true });
-  writeFileSync(target, content, 'utf8');
-}
 
 function scopeYaml(feature: string, body: string): string {
   return `feature:\n  id: ${feature}\n  name: ${feature}\n\nallowed:\n${body}\nforbidden: []\n`;

@@ -1,0 +1,14 @@
+# 统一行尾为 LF：本仓库是 Node/TS 工程，测试夹具用 LF 字面量匹配文件内容；
+# 若检出为 CRLF（Windows 默认 core.autocrlf=true），夹具会全部匹配失败。
+# 详见 tests/helpers.ts 的说明。
+* text=auto eol=lf
+
+# 二进制文件不要参与行尾转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary

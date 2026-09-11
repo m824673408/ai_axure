@@ -1,0 +1,8 @@
+PRODUCT LINT
+
+FAIL
+✗ L001 Scope Violation
+File: prototype/src/pages/DashboardPage.tsx
+当前 Feature Scope 未授权修改：prototype/src/pages/DashboardPage.tsx
+
+Result: BLOCKED

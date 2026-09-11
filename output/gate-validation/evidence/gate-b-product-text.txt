@@ -1,0 +1,8 @@
+PRODUCT LINT
+
+FAIL
+✗ L006 Product Model Unauthorized
+File: product/navigation.yaml
+当前 Feature 未授权修改 Product Model：product/navigation.yaml
+
+Result: BLOCKED

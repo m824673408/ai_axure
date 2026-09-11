@@ -1,0 +1,22 @@
+{
+  "name": "attribution-device-whitelist-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "latest",
+    "element-plus": "latest",
+    "vue": "latest"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "latest",
+    "typescript": "~5.9.3",
+    "vite": "latest",
+    "vue-tsc": "latest"
+  }
+}

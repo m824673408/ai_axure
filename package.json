@@ -10,10 +10,14 @@
     "bin",
     "dist",
     "schemas",
-    "templates"
+    "templates",
+    "studio/dist"
   ],
+  "workspaces": ["studio"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "npm run build:core && npm run build:studio",
+    "build:core": "tsc -p tsconfig.json",
+    "build:studio": "npm --workspace product-prototype-studio run build",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -9,6 +9,7 @@ import { changedFiles, currentBranch, currentFeature, ensureClean, git, isGitRep
 import { findWorkspace } from './io.js';
 import { formatLint, runLint } from './lint.js';
 import { requestSemanticDiff } from './semantic.js';
+import { startStudio } from './studio-server.js';
 import { createFeature, initializeWorkspace, loadConfig, loadProduct, loadScope, updateYamlVersion } from './workspace.js';
 
 const program = new Command();
@@ -90,7 +91,7 @@ program.command('diff')
     const root = findWorkspace();
     if (options.semantic || options.dryRun) {
       const prompt = buildSemanticPrompt(root);
-      console.log(options.dryRun ? prompt : await requestSemanticDiff(prompt));
+      console.log(options.dryRun ? prompt : await requestSemanticDiff(prompt, root));
       return;
     }
     const diff = createDiff(root);
@@ -118,6 +119,14 @@ program.command('preview')
     console.log(`Prototype running:\n\n${config.preview.url}\n\nFeature:\n${featureName}`);
     const child = spawn(config.preview.command, { cwd: prototype, shell: true, stdio: 'inherit' });
     child.on('exit', (code) => { process.exitCode = code ?? 0; });
+  });
+
+program.command('studio')
+  .option('--port <port>', '管理台端口', '3210')
+  .option('--no-open', '不自动打开浏览器')
+  .description('启动本机 PM 管理面板（仅监听 127.0.0.1）')
+  .action(async (options: { port: string; open: boolean }) => {
+    await startStudio(findWorkspace(), Number(options.port), options.open);
   });
 
 program.command('release')

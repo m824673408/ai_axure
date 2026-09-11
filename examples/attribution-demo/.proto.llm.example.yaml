@@ -1,0 +1,6 @@
+# 复制本文件为 .proto.llm.yaml 后填写真实配置。
+# .proto.llm.yaml 已被 Git 忽略，请勿提交 API Key。
+base_url: https://provider.example/v1
+api_key: your-api-key
+model: model-name
+timeout_ms: 60000

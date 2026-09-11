@@ -1,0 +1,11 @@
+Gate A structural evidence
+app_shell_occurrences=1
+page_layout_imports=6
+page_level_antd_layout_imports=0
+shared_component_source_files=5
+global_style_changed=False
+working_tree_clean=True
+navigation_pages=6
+route_keys=6
+navigation_without_route=0
+duplicate_route_paths=0

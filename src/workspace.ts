@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -48,6 +48,24 @@ export function loadScope(root: string, featureId?: string | null): ScopeModel |
   const path = join(root, 'features', id, 'scope.yaml');
   if (!existsSync(path)) throw new ProtoError(`当前 Feature 缺少 scope.yaml：${id}`);
   return scopeSchema.parse(readYaml(path)) as ScopeModel;
+}
+
+export function listFeatures(root: string): Array<{ id: string; name: string }> {
+  const directory = join(root, loadConfig(root).paths.features);
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => {
+      const scopePath = join(directory, entry.name, 'scope.yaml');
+      if (!existsSync(scopePath)) return { id: entry.name, name: entry.name };
+      try {
+        const scope = scopeSchema.parse(readYaml(scopePath)) as ScopeModel;
+        return { id: scope.feature.id, name: scope.feature.name };
+      } catch {
+        return { id: entry.name, name: entry.name };
+      }
+    })
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export function templateRoot(): string {

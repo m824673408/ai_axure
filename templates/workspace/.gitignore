@@ -5,3 +5,4 @@ prototype/dist/
 .env
 .env.*
 !.env.example
+.proto.llm.yaml

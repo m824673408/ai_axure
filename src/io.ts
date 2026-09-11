@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import YAML from 'yaml';
 import { ProtoError } from './errors.js';
@@ -13,6 +13,15 @@ export function readYaml<T>(path: string): T {
     return YAML.parse(readFileSync(path, 'utf8')) as T;
   } catch (error) {
     throw new ProtoError(`YAML 解析失败：${path}\n${String(error)}`);
+  }
+}
+
+/** Write only structured data. Studio deliberately never accepts a user supplied path. */
+export function writeYaml(path: string, value: unknown): void {
+  try {
+    writeFileSync(path, YAML.stringify(value, { lineWidth: 0 }), 'utf8');
+  } catch (error) {
+    throw new ProtoError(`YAML 写入失败：${path}\n${String(error)}`);
   }
 }
 

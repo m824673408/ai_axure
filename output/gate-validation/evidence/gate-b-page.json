@@ -1,0 +1,41 @@
+{
+  "pass": false,
+  "feature": "REQ-GATE-B-PAGE",
+  "changedFiles": [
+    {
+      "path": "features/REQ-GATE-B-PAGE/changelog.md",
+      "status": "U"
+    },
+    {
+      "path": "features/REQ-GATE-B-PAGE/requirement.md",
+      "status": "U"
+    },
+    {
+      "path": "features/REQ-GATE-B-PAGE/scenarios.yaml",
+      "status": "U"
+    },
+    {
+      "path": "features/REQ-GATE-B-PAGE/scope.yaml",
+      "status": "U"
+    },
+    {
+      "status": "M",
+      "path": "prototype/src/pages/DashboardPage.tsx"
+    }
+  ],
+  "checks": [
+    "Route structure",
+    "Navigation references",
+    "Terminology references",
+    "Component registry",
+    "Feature scope"
+  ],
+  "issues": [
+    {
+      "code": "L001",
+      "title": "Scope Violation",
+      "message": "当前 Feature Scope 未授权修改：prototype/src/pages/DashboardPage.tsx",
+      "file": "prototype/src/pages/DashboardPage.tsx"
+    }
+  ]
+}

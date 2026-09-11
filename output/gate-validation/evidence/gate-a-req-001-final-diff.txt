@@ -1,0 +1,17 @@
+Changed Files: 5
+
+Product Model: 0
+
+Pages: 1
+- M prototype/src/pages/AttributionResultsPage.tsx
+
+Shared Components: 0
+
+Feature Files: 4
+- U features/REQ-GATE-001/changelog.md
+- U features/REQ-GATE-001/requirement.md
+- U features/REQ-GATE-001/scenarios.yaml
+- U features/REQ-GATE-001/scope.yaml
+
+Prototype Files: 1
+- M prototype/src/pages/AttributionResultsPage.tsx

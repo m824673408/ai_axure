@@ -1,10 +1,23 @@
 node_modules/
 dist/
 coverage/
-output/
+# output/ 默认整体忽略（320MB 生成物、嵌套仓库、node_modules）；仅显式放行 Gate 验收证据
+output/*
+!output/gate-validation/
+output/gate-validation/*
+!output/gate-validation/evidence/
+!output/gate-validation/evidence/**
+!output/gate-validation/NEXT_AGENT_HANDOFF.md
+!output/playwright/
+output/playwright/*
+!output/playwright/gate-validation/
+!output/playwright/gate-validation/**
 .playwright-cli/
 *.log
 .DS_Store
 .env
 .env.*
 !.env.example
+.proto.llm.yaml
+# ai-product-prototype-demo 是独立的 Git 仓库（有自己的历史），不混入本仓库的 gitlink
+ai-product-prototype-demo/

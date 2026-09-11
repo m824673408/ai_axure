@@ -1,0 +1,20 @@
+Changed Files: 8
+
+Product Model: 2
+- M product/navigation.yaml
+- M product/routes.yaml
+
+Pages: 1
+- U prototype/src/pages/DeviceWhitelistPage.tsx
+
+Shared Components: 0
+
+Feature Files: 4
+- U features/REQ-GATE-002/changelog.md
+- U features/REQ-GATE-002/requirement.md
+- U features/REQ-GATE-002/scenarios.yaml
+- U features/REQ-GATE-002/scope.yaml
+
+Prototype Files: 2
+- M prototype/src/App.tsx
+- U prototype/src/pages/DeviceWhitelistPage.tsx

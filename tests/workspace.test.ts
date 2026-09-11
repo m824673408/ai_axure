@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -26,6 +26,8 @@ describe('workspace lifecycle', () => {
     expect(currentBranch(root)).toBe('main');
     expect(git(root, ['status', '--porcelain'])).toBe('');
     expect(runLint(root).pass).toBe(true);
+    expect(existsSync(join(root, '.proto.llm.example.yaml'))).toBe(true);
+    expect(readFileSync(join(root, '.gitignore'), 'utf8')).toContain('.proto.llm.yaml');
   });
 
   it('creates a feature branch and scaffold', () => {

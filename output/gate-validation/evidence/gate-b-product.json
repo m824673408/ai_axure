@@ -1,0 +1,41 @@
+{
+  "pass": false,
+  "feature": "REQ-GATE-B-PRODUCT",
+  "changedFiles": [
+    {
+      "path": "features/REQ-GATE-B-PRODUCT/changelog.md",
+      "status": "U"
+    },
+    {
+      "path": "features/REQ-GATE-B-PRODUCT/requirement.md",
+      "status": "U"
+    },
+    {
+      "path": "features/REQ-GATE-B-PRODUCT/scenarios.yaml",
+      "status": "U"
+    },
+    {
+      "path": "features/REQ-GATE-B-PRODUCT/scope.yaml",
+      "status": "U"
+    },
+    {
+      "status": "M",
+      "path": "product/navigation.yaml"
+    }
+  ],
+  "checks": [
+    "Route structure",
+    "Navigation references",
+    "Terminology references",
+    "Component registry",
+    "Feature scope"
+  ],
+  "issues": [
+    {
+      "code": "L006",
+      "title": "Product Model Unauthorized",
+      "message": "当前 Feature 未授权修改 Product Model：product/navigation.yaml",
+      "file": "product/navigation.yaml"
+    }
+  ]
+}

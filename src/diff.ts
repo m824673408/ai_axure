@@ -6,14 +6,20 @@ import { changedFiles, currentBranch, currentFeature, fullDiff, git } from './gi
 import { normalizePath, pathKey } from './io.js';
 import { duplicateCapabilityKeys, loadComponentRegistry, loadPageRegistry, pageIdForFile } from './registry.js';
 import { authorizePath, isProductPath } from './scope.js';
+import { UNREGISTERED, createNameResolver, parseTerminology } from './visible-names.js';
 import { loadConfig, loadProduct, loadScope } from './workspace.js';
 import type { ChangedFile, NavigationItem, ScopeModel } from './types.js';
-import type { PageRegistry } from './registry.js';
+import type { ComponentRegistry, PageRegistry } from './registry.js';
+import type { ElementRef, NameResolver, VisibleNameIndex, VisibleRef } from './visible-names.js';
 
 /**
  * Product Diff 的全部结论都来自 Git 对象与工作区文件的确定性读取：
  * 不使用 LLM、不访问网络、不依赖执行时间与本地化设置。
  * 为控制进程开销，所有 `<ref>:<path>` 读取合并为一次 `git cat-file --batch`。
+ *
+ * 可读性（v0.2）：每一条用户可读的变更描述统一写成
+ * 「<页面或区域的可见名> 的『<按钮/字段的可见名>』：<交互或规则发生了什么>（工程定位：…）」。
+ * 文件名 / page id / capability_key 只出现在括号的「工程定位」里，见 visible-names.ts。
  */
 
 export const CONTRACT_VERSION = '1';
@@ -37,6 +43,15 @@ export interface DiffClassification {
   overlaps: string[];
 }
 
+/**
+ * 一条变更的可读名归属：页面/区域可见名 + 按钮/字段可见名。
+ * 主句用它们拼装，工程标识（page id / capability_key / 文件）放在括号的工程定位里。
+ */
+export interface ChangeVisible {
+  page: VisibleRef;
+  element: ElementRef;
+}
+
 export interface ChangedPage {
   product: string;
   pageId: string | null;
@@ -44,6 +59,8 @@ export interface ChangedPage {
   route: string | null;
   mapping: 'registry' | 'app' | 'page-id' | 'normalized' | 'spec' | 'pages' | 'unmapped';
   known: boolean;
+  /** 面向 PM 的页面可见名（未登记时标注为「未登记可见名」）。 */
+  visible: VisibleRef;
   files: string[];
   features: string[];
 }
@@ -54,6 +71,8 @@ export interface CapabilityRef {
   given: string;
   when: string;
   then: string;
+  /** 可读名归属（v0.2 新增字段，JSON 合同只增不改）。 */
+  visible?: ChangeVisible;
 }
 
 export interface CapabilityChange {
@@ -70,6 +89,8 @@ export interface RequirementReplacement {
   before: string | null;
   after: string | null;
   message: string;
+  /** 可读名归属（v0.2 新增字段，JSON 合同只增不改）。 */
+  visible?: ChangeVisible;
 }
 
 export interface RemovedArtifact {
@@ -78,6 +99,8 @@ export interface RemovedArtifact {
   introducedBy: string;
   removedBy: string;
   message: string;
+  /** 可读名归属（v0.2 新增字段，JSON 合同只增不改）。 */
+  visible?: ChangeVisible;
 }
 
 export interface FeatureRevisionDiff {
@@ -163,6 +186,11 @@ export interface ProductDiff {
   removedArtifacts: RemovedArtifact[];
   undefinedRules: DiffFinding[];
   risks: DiffFinding[];
+  /**
+   * 可见名索引（v0.2 新增顶层字段，只增不改）：page id / 组件 id → 可见名，术语 key → 中文名。
+   * 供 Studio、CI 与 Agent 复用同一套命名解析，不需要重新实现 YAML 读取。
+   */
+  visibleNames: VisibleNameIndex;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +245,10 @@ interface FeatureContext {
   attribution: Map<string, string[]>;
   pageIndex: PageIndex;
   reader: BlobReader;
+  /** 可见名解析器（v0.2）：page / 组件 / 元素名的唯一来源。 */
+  names: NameResolver;
+  /** 各 Feature 的 Scope：页面可见名的第二来源（Feature 未改动页面文件时仍能给出页面名）。 */
+  scopes: Map<string, ScopeModel>;
 }
 
 /** 分类规则按优先级排列：每个文件只进入第一个命中的类别，保证互斥且总数正确。 */
@@ -574,6 +606,11 @@ function sameScenario(a: RawScenario, b: RawScenario): boolean {
   return a.given === b.given && a.when === b.when && a.then === b.then;
 }
 
+/** 一条能力的全部用户可见文本：元素名从这三段里抽取。 */
+function capabilityText(capability: CapabilityRef): string {
+  return `${capability.given}\n${capability.when}\n${capability.then}`;
+}
+
 function diffCapabilities(before: RawScenario[], after: RawScenario[], feature: string): CapabilityChange {
   const beforeMap = new Map(before.map((item) => [item.id, item]));
   const afterMap = new Map(after.map((item) => [item.id, item]));
@@ -778,6 +815,16 @@ export function createDiff(root: string): ProductDiff {
 
   const pageIndex = buildPageIndex(root, reader);
 
+  // 可见名解析：页面名优先 Page Registry，其次 navigation.yaml，再其次 terminology.yaml。
+  const componentRegistry = loadComponentRegistry(root);
+  const names = createNameResolver({
+    registry: pageIndex.registry,
+    components: componentRegistry,
+    navigationNames: pageIndex.names,
+    terms: parseTerminology(reader.latest('product/terminology.yaml')),
+    readText: (path) => reader.latest(path),
+  });
+
   const scopes = new Map<string, ScopeModel>();
   for (const id of ids) {
     try {
@@ -789,19 +836,19 @@ export function createDiff(root: string): ProductDiff {
   }
   const attribution = buildAttribution(revisions, files, scopes, pageIndex.registry);
 
-  const context: FeatureContext = { root, current, featureFiles: groups.featureFiles, files, attribution, pageIndex, reader };
+  const context: FeatureContext = { root, current, featureFiles: groups.featureFiles, files, attribution, pageIndex, reader, names, scopes };
   const features = ids.map((id) => buildFeatureImpact(context, id, revisionHistory.get(id) ?? [], revisionFrom.get(id) ?? baseBranch, revisionFromKind.get(id) ?? 'base', candidates.get(id) ?? []));
 
-  const changedPages = buildChangedPages(files, product.name, pageIndex, attribution, undefinedRules);
+  const changedPages = buildChangedPages(files, product.name, pageIndex, attribution, undefinedRules, names);
   const navigation = buildNavigationDiff(files, reader);
   const routes = buildRouteDiff(files, reader);
-  const sharedComponentDiff = buildSharedComponentDiff(root, files, groups.sharedComponents, reader);
+  const sharedComponentDiff = buildSharedComponentDiff(files, groups.sharedComponents, componentRegistry, reader);
   const scope = evaluateScope(root, files, current, pageIndex.registry);
 
   const requirementReplacements = features.flatMap((feature) => feature.revision.replacements).sort((a, b) => compareText(`${a.source}#${a.subject}`, `${b.source}#${b.subject}`));
   const removedArtifacts = features.flatMap((feature) => feature.revision.removedArtifacts).sort((a, b) => compareText(a.path, b.path));
 
-  collectFindings({ files, features, changedPages, sharedComponentDiff, scope, navigation, routes, undefinedRules, risks });
+  collectFindings({ files, features, changedPages, sharedComponentDiff, scope, navigation, routes, undefinedRules, risks, names });
 
   return {
     contractVersion: CONTRACT_VERSION,
@@ -830,6 +877,7 @@ export function createDiff(root: string): ProductDiff {
     removedArtifacts,
     undefinedRules: [...undefinedRules].sort((a, b) => compareText(a.code, b.code)),
     risks: [...risks].sort((a, b) => compareText(a.code, b.code)),
+    visibleNames: names.index(),
   };
 }
 
@@ -851,7 +899,8 @@ function buildFeatureImpact(
   fromKind: FeatureRevisionDiff['fromKind'],
   artifactCandidatesOfFeature: ArtifactCandidate[],
 ): FeatureImpact {
-  const { reader, pageIndex, attribution, files, current } = context;  const own = context.featureFiles.filter((file) => featureIdFromPath(file.path) === id);
+  const { reader, pageIndex, attribution, files, current, names, scopes } = context;
+  const own = context.featureFiles.filter((file) => featureIdFromPath(file.path) === id);
   const statuses = new Set(own.map((file) => file.status));
   const status: FeatureImpact['status'] = own.length === 0
     ? 'unchanged'
@@ -869,24 +918,69 @@ function buildFeatureImpact(
   const nameAfter = featureName(reader.latest(`features/${id}/scope.yaml`), id);
   const nameBefore = featureName(before('scope.yaml'), fromKind === 'base' ? id : nameAfter);
 
+  const requirementAfter = reader.latest(`features/${id}/requirement.md`);
+
+  /**
+   * 页面候选：优先「本 Feature 实际改到的页面」，其次「Scope 授权的页面」
+   * （只改了实现文件、没改 spec 时，仍然能给出页面可见名，而不是回退成文件路径）。
+   */
+  const pageCandidates = (() => {
+    const touched = featurePages(attributed, pageIndex);
+    if (touched.length > 0) return touched;
+    return sorted(scopes.get(id)?.allowed.pages ?? []);
+  })();
+  /** 多页 Feature 用「元素名出现在哪个页面的 spec 里」消歧，避免把按钮挂到不相干的页面上。 */
+  const pageFor = (elementName: string | null): VisibleRef => {
+    const pageId = elementName
+      ? pageCandidates.find((candidate) => names.pageText(candidate).includes(elementName)) ?? pageCandidates[0]
+      : pageCandidates[0];
+    // 兜底提示用「像页面产物的文件」（实现文件 / spec），而不是 requirement.md 之类的 Feature 文档。
+    const pageFiles = attributed.filter((path) => pageOfPath(path, pageIndex) !== null);
+    return names.page(pageId ?? null, pageFiles.length > 0 ? pageFiles : attributed);
+  };
+  const visibleFor = (text: string, locate: string, fallbackOf: string): ChangeVisible => {
+    const element = names.element(text, { locate, corroborate: requirementAfter, fallbackOf });
+    return { page: pageFor(element.name), element };
+  };
+
   const scenariosAfter = parseScenarios(reader.latest(`features/${id}/scenarios.yaml`));
   const revisionCapabilities = diffCapabilities(parseScenarios(before('scenarios.yaml')), scenariosAfter, id);
   const baseCapabilities = diffCapabilities(parseScenarios(reader.base(`features/${id}/scenarios.yaml`)), scenariosAfter, id);
+  const scenarioLocator = (capabilityId: string) => `features/${id}/scenarios.yaml#${capabilityId}`;
+  const decorate = (change: CapabilityChange): void => {
+    for (const item of [...change.added, ...change.removed]) item.visible = visibleFor(capabilityText(item), scenarioLocator(item.id), item.id);
+    for (const item of change.modified) {
+      item.before.visible = visibleFor(capabilityText(item.before), scenarioLocator(item.id), item.id);
+      item.after.visible = visibleFor(capabilityText(item.after), scenarioLocator(item.id), item.id);
+    }
+  };
+  decorate(revisionCapabilities);
+  decorate(baseCapabilities);
 
   const replacements = [
     ...scenarioReplacements(id, revisionCapabilities),
-    ...requirementReplacements(id, before('requirement.md'), reader.latest(`features/${id}/requirement.md`)),
-  ];
+    ...requirementReplacements(id, before('requirement.md'), requirementAfter),
+  ].map((item) => {
+    // 可读主语优先取最新版本侧；最新版本侧已经抽不出控件名时，退回旧侧（旧交互被移除的场景）。
+    const locator = `${item.source}#${item.subject}`;
+    const primary = visibleFor(item.after ?? item.before ?? '', locator, item.subject);
+    if (primary.element.source !== 'fallback' || !item.before) return { ...item, visible: primary };
+    return { ...item, visible: visibleFor(item.before, locator, item.subject) };
+  });
 
   const artifacts: RemovedArtifact[] = [];
   for (const candidate of artifactCandidatesOfFeature) {
     if (reader.at('HEAD', candidate.path) !== null) continue;
+    // 被删除的实现文件没有登记的可见名：如实回退为文件路径，并在主句里标注「未登记可见名」。
+    const element: ElementRef = { name: `${UNREGISTERED} ${candidate.path}）`, source: 'fallback', fallbackOf: candidate.path, location: candidate.path, kind: '' };
+    const page = pageFor(null);
     artifacts.push({
       feature: id,
       path: candidate.path,
       introducedBy: candidate.introducedBy,
       removedBy: candidate.removedBy,
-      message: `旧实现被移除：V1 引入的 ${candidate.path} 已被后续版本删除，净差（base..HEAD）中不可见。`,
+      visible: { page, element },
+      message: `${page.name} 的『${element.name}』：V1 引入的旧实现已被后续版本删除，净差（base..HEAD）中不可见（工程定位：${candidate.path}；${candidate.introducedBy} 引入 → ${candidate.removedBy} 删除）。`,
     });
   }
 
@@ -923,7 +1017,7 @@ function featurePages(paths: string[], pageIndex: PageIndex): string[] {
   return sorted(pages);
 }
 
-function buildChangedPages(files: ChangedFile[], productName: string, pageIndex: PageIndex, attribution: Map<string, string[]>, undefinedRules: DiffFinding[]): ChangedPage[] {
+function buildChangedPages(files: ChangedFile[], productName: string, pageIndex: PageIndex, attribution: Map<string, string[]>, undefinedRules: DiffFinding[], names: NameResolver): ChangedPage[] {
   const grouped = new Map<string, ChangedPage>();
   for (const file of files) {
     const resolved = pageOfPath(file.path, pageIndex);
@@ -936,6 +1030,7 @@ function buildChangedPages(files: ChangedFile[], productName: string, pageIndex:
       route: resolved.pageId ? pageIndex.routes.get(resolved.pageId) ?? null : null,
       mapping: resolved.mapping,
       known: Boolean(resolved.pageId && (pageIndex.names.has(resolved.pageId) || pageIndex.routes.has(resolved.pageId))),
+      visible: names.page(resolved.pageId, [file.path]),
       files: [],
       features: [],
     };
@@ -995,8 +1090,7 @@ function buildRouteDiff(files: ChangedFile[], reader: BlobReader): RouteDiff {
   };
 }
 
-function buildSharedComponentDiff(root: string, files: ChangedFile[], sharedFiles: ChangedFile[], reader: BlobReader): SharedComponentDiff {
-  const componentRegistry = loadComponentRegistry(root);
+function buildSharedComponentDiff(files: ChangedFile[], sharedFiles: ChangedFile[], componentRegistry: ComponentRegistry, reader: BlobReader): SharedComponentDiff {
   const before = parseRegistry(reader.base('components/registry.yaml'));
   // P0-3 Component Registry 存在时优先使用其能力键解析；缺失时回退为直接解析 YAML。
   const after = componentRegistry.present
@@ -1076,10 +1170,25 @@ interface FindingContext {
   routes: RouteDiff;
   undefinedRules: DiffFinding[];
   risks: DiffFinding[];
+  names: NameResolver;
+}
+
+/** 变更涉及 Product Model 时的中文名：主句说人话，原始文件名进括号。 */
+const PRODUCT_FILE_LABELS: Array<[string, string]> = [
+  ['product/product.yaml', '产品信息'],
+  ['product/navigation.yaml', '导航结构'],
+  ['product/routes.yaml', '路由表'],
+  ['product/terminology.yaml', '术语表'],
+  ['product/permissions.yaml', '权限表'],
+  ['product/pages.yaml', '页面登记表'],
+];
+
+function productFileLabel(path: string): string {
+  return PRODUCT_FILE_LABELS.find(([file]) => file === path)?.[1] ?? path;
 }
 
 function collectFindings(context: FindingContext): void {
-  const { files, features, changedPages, sharedComponentDiff, scope, navigation, routes, undefinedRules, risks } = context;
+  const { files, features, changedPages, sharedComponentDiff, scope, navigation, routes, undefinedRules, risks, names } = context;
 
   if (files.length === 0) {
     risks.push({ code: 'R010', title: '无变更', detail: '当前分支相对 base 没有任何文件变化。' });
@@ -1096,10 +1205,13 @@ function collectFindings(context: FindingContext): void {
       undefinedRules.push({ code: 'U003', title: '用户能力清单未定义', detail: `Feature ${feature.id} 没有可解析的能力清单（features/${feature.id}/scenarios.yaml 缺失、为空或结构无法识别，例如顶层缺少 scenarios: 列表）。`, file: `features/${feature.id}/scenarios.yaml` });
     }
     if (feature.revision.replacements.length > 0 || feature.revision.removedArtifacts.length > 0) {
+      const since = feature.revision.fromKind === 'introducing-commit'
+        ? `V1(${feature.revision.from.slice(0, 7)})`
+        : `基线分支 ${feature.revision.from}`;
       risks.push({
         code: 'R001',
         title: '需求反悔：旧交互被移除/替换',
-        detail: `Feature ${feature.id} 在 ${feature.revision.from.slice(0, 7)} 之后发生了需求替换：替换条目 ${feature.revision.replacements.length} 条，被移除实现 ${feature.revision.removedArtifacts.length} 个。请 PM 确认旧交互已被有意移除。`,
+        detail: `${names.feature(feature.id, feature.name).name} 的需求在 ${since} 之后被改写：交互替换 ${feature.revision.replacements.length} 条、旧实现被移除 ${feature.revision.removedArtifacts.length} 个；请 PM 确认旧交互是有意移除的（工程定位：feature ${feature.id}）。`,
       });
     }
     for (const artifact of feature.revision.removedArtifacts) {
@@ -1110,7 +1222,7 @@ function collectFindings(context: FindingContext): void {
     risks.push({
       code: 'R008',
       title: '本分支同时存在多个 Feature',
-      detail: `检测到 ${features.length} 个 Feature（${features.map((feature) => feature.id).join('、')}）；合并态必须分别确认每个 Feature 的产品影响。`,
+      detail: `检测到 ${features.length} 个需求变更：${features.map((feature) => names.feature(feature.id, feature.name).name).join('、')}（工程定位：${features.map((feature) => feature.id).join('、')}）；合并态必须分别确认每个 Feature 的产品影响。`,
     });
   }
   for (const page of changedPages) {
@@ -1118,7 +1230,7 @@ function collectFindings(context: FindingContext): void {
     risks.push({
       code: 'R003',
       title: '同一页面被多个 Feature 修改',
-      detail: `页面 ${page.pageId ?? page.files[0]} 的变更来自多个 Feature（${page.features.join('、')}），存在 UI 入口与产品语义冲突风险。`,
+      detail: `${page.visible.name} 的变更来自多个 Feature（${page.features.join('、')}），存在 UI 入口与产品语义冲突风险（工程定位：${page.pageId ? `page ${page.pageId}` : page.files[0]}）。`,
       file: page.files[0],
     });
   }
@@ -1129,7 +1241,7 @@ function collectFindings(context: FindingContext): void {
     risks.push({ code: 'R011', title: '公共组件能力键变化', detail: 'capability_key 变化会影响既有页面的能力去重判定与 Studio 展示。', file: 'components/registry.yaml' });
   }
   if (sharedComponentDiff.added.length > 0) {
-    risks.push({ code: 'R007', title: '新增公共组件', detail: `新增公共组件：${sharedComponentDiff.added.join('、')}；需确认已登记 components/registry.yaml 并完成能力去重。`, file: 'components/registry.yaml' });
+    risks.push({ code: 'R007', title: '新增公共组件', detail: `新增公共组件：${sharedComponentDiff.added.map((id) => names.component(id).name).join('、')}；需确认已登记 components/registry.yaml 并完成能力去重（工程定位：${sharedComponentDiff.added.join('、')}）。`, file: 'components/registry.yaml' });
   }
   if (scope.scopeViolations.length > 0) {
     undefinedRules.push({
@@ -1146,7 +1258,8 @@ function collectFindings(context: FindingContext): void {
     });
   }
   if (files.some((file) => file.path.startsWith('product/'))) {
-    risks.push({ code: 'R005', title: 'Product Model 变化', detail: `变更涉及 Product Model：${files.filter((file) => file.path.startsWith('product/')).map((file) => file.path).join('、')}。` });
+    const productFiles = files.filter((file) => file.path.startsWith('product/')).map((file) => file.path);
+    risks.push({ code: 'R005', title: 'Product Model 变化', detail: `变更涉及 Product Model：${productFiles.map(productFileLabel).join('、')}（工程定位：${productFiles.join('、')}）。` });
   }
   if (navigation.changed !== routes.changed) {
     risks.push({
@@ -1203,12 +1316,76 @@ function formatCapabilities(diff: ProductDiff): string[] {
   const lines: string[] = [];
   for (const feature of diff.features) {
     const change = feature.capabilitiesVsBase;
-    lines.push(`- ${feature.id} ${feature.name}（能力共 ${feature.capabilityCount} 条；${counts(change.added.length, change.modified.length, change.removed.length)}）`);
-    for (const item of change.added) lines.push(`  + 新增 ${item.id}：${item.then}`);
-    for (const item of change.modified) lines.push(`  ~ 修改 ${item.id}：${item.before.then} → ${item.after.then}`);
-    for (const item of change.removed) lines.push(`  - 删除 ${item.id}：${item.then}`);
+    lines.push(`- ${featureLabel(feature)}${locate(`feature ${feature.id}；能力共 ${feature.capabilityCount} 条；${counts(change.added.length, change.modified.length, change.removed.length)}`)}`);
+    for (const item of change.added) lines.push(`  + ${changeSentence(item.visible, item.id, item.then)}${locate(capabilityLocator(feature.id, item.id))}`);
+    for (const item of change.modified) {
+      lines.push(`  ~ ${changeSentence(item.after.visible, item.id, modifiedDescription(item.before, item.after))}${locate(capabilityLocator(feature.id, item.id))}`);
+    }
+    for (const item of change.removed) lines.push(`  - ${changeSentence(item.visible, item.id, item.then)}${locate(capabilityLocator(feature.id, item.id))}`);
   }
   return lines;
+}
+
+/**
+ * 修改类条目的变化描述：只说真正变了的字段。
+ * 只比较 then 会输出「同样的话 → 同样的话」（改动落在 given / when 时），对 PM 完全没有信息量。
+ */
+function modifiedDescription(before: CapabilityRef, after: CapabilityRef): string {
+  const parts: string[] = [];
+  if (before.given !== after.given) parts.push(`前置条件由「${before.given}」改为「${after.given}」`);
+  if (before.when !== after.when) parts.push(`触发方式由「${before.when}」改为「${after.when}」`);
+  if (before.then !== after.then) parts.push(`结果由「${before.then}」改为「${after.then}」`);
+  return parts.length > 0 ? parts.join('；') : `${before.then} → ${after.then}`;
+}
+
+// ---------------------------------------------------------------------------
+// 可读名拼装：主句一律是「<页面或区域的可见名> 的『<按钮/字段的可见名>』：<变化>」，
+// 工程标识（page id / capability_key / 文件路径）只允许出现在括号的「工程定位」里。
+// ---------------------------------------------------------------------------
+
+function locate(label: string): string {
+  return `（工程定位：${label}）`;
+}
+
+/** 未登记可见名时的兜底文案：与 visible-names.ts 的可见名解析保持同一措辞。 */
+function unregisteredLabel(token: string): string {
+  return `${UNREGISTERED} ${token}）`;
+}
+
+/** 可读名本身（用于不需要「页面」后缀的场合，例如导航 / 路由 / 组件清单）。 */
+function visibleLabel(ref: { name: string; source: string } | undefined, token: string): string {
+  return ref && ref.source !== 'fallback' ? ref.name : unregisteredLabel(token);
+}
+
+/** 主句里的页面短语：正常是「归因规则 页面」，未登记则是带标注的兜底名。 */
+function pagePhrase(ref: VisibleRef | undefined, token: string): string {
+  return ref && ref.source !== 'fallback' ? `${ref.name} 页面` : unregisteredLabel(token);
+}
+
+/** 主句里的元素短语：正常是「『与当前版本对比』按钮」，未登记则是带标注的兜底名。 */
+function elementPhrase(ref: ElementRef | undefined, token: string): string {
+  if (!ref || ref.source === 'fallback') return `『${unregisteredLabel(token)}』`;
+  return `『${ref.name}』${ref.kind}`;
+}
+
+function changeSentence(visible: ChangeVisible | undefined, token: string, desc: string): string {
+  return `${pagePhrase(visible?.page, token)}的${elementPhrase(visible?.element, token)}：${desc}`;
+}
+
+function featureLabel(feature: FeatureImpact): string {
+  return feature.name && feature.name !== feature.id ? feature.name : unregisteredLabel(feature.id);
+}
+
+function capabilityLocator(featureId: string, capabilityId: string): string {
+  return `feature ${featureId}；features/${featureId}/scenarios.yaml#${capabilityId}`;
+}
+
+function pageNameOf(diff: ProductDiff, pageId: string): string {
+  return visibleLabel(diff.visibleNames?.pages[pageId], pageId);
+}
+
+function componentNameOf(diff: ProductDiff, componentId: string): string {
+  return visibleLabel(diff.visibleNames?.components[componentId], componentId);
 }
 
 export function formatDiff(diff: ProductDiff, baseBranch?: string): string {
@@ -1241,12 +1418,17 @@ export function formatDiff(diff: ProductDiff, baseBranch?: string): string {
 
   lines.push('PRODUCT', `${diff.product.name || '(未定义)'} (${diff.product.id || '-'}) v${diff.product.version || '-'}`, '');
 
-  lines.push('CHANGED PAGES (产品名 / page ID)');
+  lines.push('CHANGED PAGES（页面可见名；工程定位在括号内）');
   if (diff.changedPages.length === 0) lines.push('- None');
   for (const page of diff.changedPages) {
-    const label = `${page.product || '(未定义)'} / ${page.pageId ?? '(unmapped)'}${page.name ? `（${page.name}）` : ''}`;
-    const featureLabel = page.features.length > 0 ? ` features=${page.features.join('、')}` : '';
-    lines.push(`- ${label} route=${page.route ?? '-'} mapping=${page.mapping}${featureLabel}`);
+    const meta = [
+      `产品 ${page.product || '(未定义)'}`,
+      page.pageId ? `page ${page.pageId}` : 'page (unmapped)',
+      `route=${page.route ?? '-'}`,
+      `mapping=${page.mapping}`,
+    ];
+    if (page.features.length > 0) meta.push(`features=${page.features.join('、')}`);
+    lines.push(`- ${pagePhrase(page.visible, page.pageId ?? page.files[0] ?? 'unmapped')}${locate(meta.join('；'))}`);
     for (const file of page.files) lines.push(`  - ${file}`);
   }
   lines.push('');
@@ -1261,18 +1443,28 @@ export function formatDiff(diff: ProductDiff, baseBranch?: string): string {
     `SHARED COMPONENTS: ${diff.sharedComponentDiff.changed ? 'changed' : 'unchanged'}`,
     `CAPABILITY KEY: ${diff.sharedComponentDiff.capabilityKeys.changed ? 'changed' : 'unchanged'}`,
   ].join(' | '));
-  for (const page of diff.navigation.added) lines.push(`+ navigation ${page}`);
-  for (const page of diff.navigation.removed) lines.push(`- navigation ${page}`);
-  for (const item of diff.navigation.modified) lines.push(`~ navigation ${item.page}: ${item.before} → ${item.after}`);
-  for (const id of diff.routes.added) lines.push(`+ route ${id}`);
-  for (const id of diff.routes.removed) lines.push(`- route ${id}`);
-  for (const item of diff.routes.modified) lines.push(`~ route ${item.id}: ${item.before} → ${item.after}`);
-  for (const id of diff.sharedComponentDiff.added) lines.push(`+ shared component ${id}`);
-  for (const id of diff.sharedComponentDiff.removed) lines.push(`- shared component ${id}`);
-  for (const id of diff.sharedComponentDiff.modified) lines.push(`~ shared component ${id}`);
-  for (const item of diff.sharedComponentDiff.capabilityKeys.added) lines.push(`+ capability_key ${item.component}: ${item.capabilityKey}`);
-  for (const item of diff.sharedComponentDiff.capabilityKeys.removed) lines.push(`- capability_key ${item.component}: ${item.capabilityKey}`);
-  for (const item of diff.sharedComponentDiff.capabilityKeys.modified) lines.push(`~ capability_key ${item.component}: ${item.before ?? '-'} → ${item.after ?? '-'}`);
+  for (const page of diff.navigation.added) lines.push(`+ 导航新增页面：${pageNameOf(diff, page)}${locate(`page ${page}；product/navigation.yaml`)}`);
+  for (const page of diff.navigation.removed) lines.push(`- 导航移除页面：${pageNameOf(diff, page)}${locate(`page ${page}；product/navigation.yaml`)}`);
+  for (const item of diff.navigation.modified) {
+    lines.push(`~ 导航条目调整：${pageNameOf(diff, item.page)}${locate(`page ${item.page}；product/navigation.yaml`)} —— ${item.before} → ${item.after}`);
+  }
+  for (const id of diff.routes.added) lines.push(`+ 路由新增：${pageNameOf(diff, id)}${locate(`route ${id}；product/routes.yaml`)}`);
+  for (const id of diff.routes.removed) lines.push(`- 路由移除：${pageNameOf(diff, id)}${locate(`route ${id}；product/routes.yaml`)}`);
+  for (const item of diff.routes.modified) {
+    lines.push(`~ 路由调整：${pageNameOf(diff, item.id)}${locate(`route ${item.id}；product/routes.yaml`)} —— ${item.before} → ${item.after}`);
+  }
+  for (const id of diff.sharedComponentDiff.added) lines.push(`+ 公共组件新增：${componentNameOf(diff, id)}${locate(`组件 ${id}；components/registry.yaml`)}`);
+  for (const id of diff.sharedComponentDiff.removed) lines.push(`- 公共组件移除：${componentNameOf(diff, id)}${locate(`组件 ${id}；components/registry.yaml`)}`);
+  for (const id of diff.sharedComponentDiff.modified) lines.push(`~ 公共组件调整：${componentNameOf(diff, id)}${locate(`组件 ${id}；components/registry.yaml`)}`);
+  for (const item of diff.sharedComponentDiff.capabilityKeys.added) {
+    lines.push(`+ 公共组件『${componentNameOf(diff, item.component)}』新增能力键：${item.capabilityKey}${locate(`组件 ${item.component}；components/registry.yaml`)}`);
+  }
+  for (const item of diff.sharedComponentDiff.capabilityKeys.removed) {
+    lines.push(`- 公共组件『${componentNameOf(diff, item.component)}』移除能力键：${item.capabilityKey}${locate(`组件 ${item.component}；components/registry.yaml`)}`);
+  }
+  for (const item of diff.sharedComponentDiff.capabilityKeys.modified) {
+    lines.push(`~ 公共组件『${componentNameOf(diff, item.component)}』能力键变化：${item.before ?? '-'} → ${item.after ?? '-'}${locate(`组件 ${item.component}；components/registry.yaml`)}`);
+  }
   for (const item of diff.sharedComponentDiff.capabilityKeys.duplicates) lines.push(`! duplicate ${item}`);
   lines.push(`SCOPE: ${diff.scope.status}（feature: ${diff.scope.feature ?? 'None'}，检查文件 ${diff.scope.checkedFiles}）`);
   for (const issue of diff.scope.scopeViolations) lines.push(`- ${issue.code} ${issue.file} ${issue.message}`);
@@ -1291,13 +1483,14 @@ export function formatDiff(diff: ProductDiff, baseBranch?: string): string {
   }
   for (const feature of diff.features) {
     const revision = feature.revision;
-    lines.push(`- [${feature.status}] ${feature.id} ${feature.name}（origin: ${feature.origin}；修订 ${revision.revisionCount} 次；文件 ${feature.files.length}；页面 ${feature.changedPages.length ? feature.changedPages.join('、') : 'None'}；能力 ${feature.capabilityCount} 条）`);
+    lines.push(`- [${feature.status}] ${featureLabel(feature)}${locate(`feature ${feature.id}；origin: ${feature.origin}；修订 ${revision.revisionCount} 次；文件 ${feature.files.length}；页面 ${feature.changedPages.length ? feature.changedPages.join('、') : 'None'}；能力 ${feature.capabilityCount} 条`)}`);
     lines.push(`  vs base：${counts(feature.capabilitiesVsBase.added.length, feature.capabilitiesVsBase.modified.length, feature.capabilitiesVsBase.removed.length)}`);
     lines.push(`  V1(${revision.from.slice(0, 7)}) → latest：${counts(revision.capabilities.added.length, revision.capabilities.modified.length, revision.capabilities.removed.length)}；需求替换 ${revision.replacements.length} 条；被移除实现 ${revision.removedArtifacts.length} 个`);
   }
   lines.push('');
 
   lines.push('CAPABILITIES (vs base：基线分支 → 当前工作区修订)');
+  lines.push('口径：每条 =「<页面或区域的可见名> 的『<按钮/字段的可见名>』：交互或规则变化」，行尾括号内为工程定位。+ 新增 ~ 修改 - 删除。');
   lines.push(...formatCapabilities(diff));
   lines.push('');
 
@@ -1308,7 +1501,8 @@ export function formatDiff(diff: ProductDiff, baseBranch?: string): string {
   }
   for (const item of replacements) {
     const tag = item.kind === 'removed' ? '旧交互被移除' : '旧交互被移除/替换';
-    lines.push(`- [${item.kind}] ${item.feature} ${item.source.replace(`features/${item.feature}/`, '')}#${item.subject} —— ${tag}`);
+    const summary = item.kind === 'removed' ? 'V1 的旧交互在最新版本中已不存在' : 'V1 的旧交互已被最新版本替换';
+    lines.push(`- ${changeSentence(item.visible, item.subject, summary)} —— ${tag}${locate(`${item.feature}；${item.source}#${item.subject}`)}`);
     if (item.before) lines.push(`  旧: ${item.before}`);
     if (item.after) lines.push(`  新: ${item.after}`);
   }
@@ -1316,7 +1510,7 @@ export function formatDiff(diff: ProductDiff, baseBranch?: string): string {
     lines.push('');
     lines.push(`REMOVED ARTIFACTS (V1 → latest): ${diff.removedArtifacts.length}`);
     for (const item of diff.removedArtifacts) {
-      lines.push(`- ${item.path}（${item.introducedBy} 引入 → ${item.removedBy} 删除）旧交互被移除，净差（base..HEAD）中不可见。`);
+      lines.push(`- ${changeSentence(item.visible, item.path, '旧交互被移除，净差（base..HEAD）中不可见')}${locate(`${item.path}；${item.introducedBy} 引入 → ${item.removedBy} 删除`)}`);
     }
   }
   lines.push('');

@@ -416,10 +416,13 @@ describe('product model and scope signals', () => {
 
     const diff = createDiff(root);
     expect(diff.contractVersion).toBe('1');
+    // v0.2 可读性：新增顶层字段 visibleNames（page id / 组件 id → 可见名，术语 key → 中文名）。
+    // 合同约定「只新增、不删除、不改名」；这里同步断言新增后的完整字段集，
+    // 以确保 20 个既有字段一个都没丢、也没被改名（读 diff 的 Studio / CI 仍按原字段取值）。
     expect(Object.keys(diff).sort()).toEqual([
       'changedFiles', 'changedPages', 'classification', 'contractVersion', 'featureFiles', 'features', 'navigation', 'otherFiles',
       'pages', 'product', 'productModel', 'prototypeFiles', 'removedArtifacts', 'requirementReplacements', 'risks', 'routes',
-      'scope', 'sharedComponentDiff', 'sharedComponents', 'undefinedRules',
+      'scope', 'sharedComponentDiff', 'sharedComponents', 'undefinedRules', 'visibleNames',
     ].sort());
     expect(Object.keys(diff.classification).sort()).toEqual(['assigned', 'categorized', 'overlaps', 'total', 'uncategorized']);
     expect(Object.keys(diff.scope).sort()).toEqual(['checkedFiles', 'error', 'feature', 'scopeViolations', 'status']);

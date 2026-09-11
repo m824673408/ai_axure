@@ -530,7 +530,7 @@ export function checkPageRegistrySchema(root: string, refs: PageRegistryRefs): L
     if (hasFile) {
       const implementation = normalizePath(value.file as string);
       if (!existsSync(join(root, implementation))) {
-        context.issues.push({ code: 'L010', title: 'Page Registry Mismatch', message: `${field}.file 指向不存在的实现文件：${implementation}`, file, field: `${field}.file`, fix: `将 ${field}.file 改为真实存在的实现文件路径，或删除该页面登记。` });
+        context.issues.push({ code: 'L010', title: 'Page Registry Mismatch', message: `${field}.file 指向不存在的实现文件：${implementation}`, file, field: `${field}.file`, fix: `将 ${field}.file 改为真实存在的实现文件路径；若该文件已在本次变更中被删除，请同步更新或删除该页面登记。` });
       }
       const previous = ownerOfFile.get(implementation);
       if (previous) {

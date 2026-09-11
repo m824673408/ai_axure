@@ -46,7 +46,7 @@ export interface ChangedFile {
 }
 
 export interface LintIssue {
-  code: 'L001' | 'L002' | 'L003' | 'L004' | 'L005' | 'L006' | 'L007' | 'L008' | 'L009' | 'L010' | 'L011';
+  code: 'L001' | 'L002' | 'L003' | 'L004' | 'L005' | 'L006' | 'L007' | 'L008' | 'L009' | 'L010' | 'L011' | 'L012' | 'L013';
   title: string;
   message: string;
   /** YAML/JSON 字段路径，例如 routes.attribution_rule.module（P0-1 起）。 */

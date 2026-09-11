@@ -6,6 +6,7 @@ import { listFilesRecursive, normalizePath, readYaml } from './io.js';
 import { authorizePath, componentNameFromPath, isProductPath } from './scope.js';
 import { checkComponentRegistrySchema, checkNavigationSchema, checkPageRegistrySchema, checkProductSchema, checkRoutesSchema, checkScopeSchema, checkTerminologySchema } from './schema.js';
 import { duplicateCapabilityKeys, loadComponentRegistry, loadPageRegistry } from './registry.js';
+import { crossFeatureSemanticsIssues, knownProductModelKeys, scopeReferenceIssues } from './lint-rules.js';
 import { loadConfig, loadNavigation, loadScope } from './workspace.js';
 import type { LintIssue, LintResult, NavigationItem } from './types.js';
 
@@ -98,6 +99,10 @@ export function runLint(root: string): LintResult {
   const issues = [...schemaIssues, ...structural.issues];
   issues.push(...(hasTerminology ? terminologyChecks(root) : []), ...(existsSync(join(root, 'components', 'registry.yaml')) ? componentChecks(root, changed) : []));
   checks.push(...structural.checks, 'Terminology references', 'Component registry');
+  // P0-4：跨 Feature 产品语义重复（只有同一工作区存在多个 Feature 时才可能触发）
+  const crossFeatureIssues = crossFeatureSemanticsIssues(root);
+  issues.push(...crossFeatureIssues);
+  checks.push('Cross-Feature semantics');
 
   if (feature) {
     const scopeSchema = checkScopeSchema(root, feature);
@@ -106,6 +111,14 @@ export function runLint(root: string): LintResult {
     // 路径解析必须用当前分支的 Feature ID（目录名），不能用 scope.yaml 内声明的 id
     const scope = loadScope(root, feature);
     if (scope) {
+      // P0-4：Scope 里声明了不存在的页面 / 组件 / Product Model（L012）
+      const knownPages = new Set<string>([...flattenPages(loadNavigation(root)), ...pageRegistry.entries.keys()]);
+      issues.push(...scopeReferenceIssues(feature, scope, {
+        knownPages,
+        knownComponents: registrySchema.componentIds,
+        knownProductModel: knownProductModelKeys(root),
+      }));
+      checks.push('Scope references');
       for (const file of changed) {
         const authorization = authorizePath(file.path, scope, pageRegistry);
         if (authorization.allowed) continue;

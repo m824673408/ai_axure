@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 import { join, resolve } from 'node:path';
 import { Command } from 'commander';
 import pc from 'picocolors';
+import { formatCheck, runCheck } from './check.js';
 import { createDiff, buildSemanticPrompt, formatDiff } from './diff.js';
 import { ProtoError } from './errors.js';
 import { changedFiles, currentBranch, currentFeature, ensureClean, git, isGitRepository } from './git.js';
@@ -51,11 +52,21 @@ const feature = program.command('feature').description('管理 Feature');
 feature.command('create')
   .argument('<id>', 'Feature ID，例如 REQ-20260820-001')
   .requiredOption('--name <name>', 'Feature 名称')
+  .option('--page <pageId>', '授权页面 ID（可重复；经 Page Registry 展开为真实实现文件与 spec）', (value: string, previous: string[]) => [...previous, value], [] as string[])
   .description('创建 Feature 分支与文件')
-  .action((id: string, options: { name: string }) => {
+  .action((id: string, options: { name: string; page: string[] }) => {
     const root = findWorkspace();
-    createFeature(root, id, options.name);
-    console.log(`Feature created.\n\nFeature:\n${id}\n${options.name}\n\nBranch:\nfeature/${id}`);
+    const authorization = createFeature(root, id, options.name, options.page ?? []);
+    const lines = [`Feature created.`, ``, `Feature:`, id, options.name, ``, `Branch:`, `feature/${id}`];
+    if (authorization.pages.length > 0) {
+      lines.push(``, `Authorized pages (by Page Registry):`);
+      for (const page of authorization.pages) lines.push(`- ${page}`);
+      if (authorization.paths.length > 0) {
+        lines.push(``, `Allowed paths (generated):`);
+        for (const path of authorization.paths) lines.push(`- ${path}`);
+      }
+    }
+    console.log(lines.join('\n'));
   });
 
 feature.command('status')
@@ -71,6 +82,19 @@ feature.command('status')
     if (options.json) return console.log(JSON.stringify(output, null, 2));
     console.log(`Feature:\n${id}\n\nBranch:\n${output.branch}\n\nBase:\n${output.base}\n\nChanged Files:\n${output.changed_files}\n\nScope:\n${output.scope}`);
     if (!lint.pass) process.exitCode = 1;
+  });
+
+program.command('check')
+  .option('--json', '输出 JSON')
+  .option('--out <file>', '把 JSON 结果写入文件（供 CI 读取）')
+  .option('--no-build', '跳过第 4 段 Prototype Build')
+  .description('合并前一次性检查：Schema & Lint / Product Diff / Registry 冲突 / Prototype Build / 风险提示')
+  .action((options: { json?: boolean; out?: string; build: boolean }) => {
+    const root = findWorkspace();
+    const result = runCheck(root, { build: options.build });
+    if (options.out) writeFileSync(resolve(options.out), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    console.log(options.json ? JSON.stringify(result, null, 2) : formatCheck(result));
+    if (!result.pass) process.exitCode = 1;
   });
 
 program.command('lint')
@@ -95,7 +119,7 @@ program.command('diff')
       return;
     }
     const diff = createDiff(root);
-    console.log(options.json ? JSON.stringify(diff, null, 2) : formatDiff(diff));
+    console.log(options.json ? JSON.stringify(diff, null, 2) : formatDiff(diff, loadConfig(root).workspace.base_branch));
   });
 
 program.command('preview')

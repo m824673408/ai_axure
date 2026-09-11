@@ -1,6 +1,6 @@
 import { basename } from 'node:path';
 import { minimatch } from 'minimatch';
-import { normalizePath } from './io.js';
+import { normalizePath, pathKey } from './io.js';
 import { pageIdForFile, registeredPathsForPage, type PageRegistry } from './registry.js';
 import type { ScopeModel } from './types.js';
 
@@ -52,7 +52,7 @@ export function authorizePath(pathValue: string, scope: ScopeModel, pages?: Page
   if (pages?.present) {
     for (const page of scope.allowed.pages) {
       if (registeredPage === page) return { allowed: true, reason: 'page_registry' };
-      if (registeredPathsForPage(pages, page).includes(path)) return { allowed: true, reason: 'page_registry' };
+      if (registeredPathsForPage(pages, page).some((registered) => pathKey(registered) === pathKey(path))) return { allowed: true, reason: 'page_registry' };
     }
   }
   for (const page of scope.allowed.pages) {

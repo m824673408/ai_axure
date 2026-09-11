@@ -7,6 +7,16 @@ export function normalizePath(value: string): string {
   return value.replaceAll('\\', '/').replace(/^\.\//, '');
 }
 
+/**
+ * 路径比较键：在 normalizePath 基础上，于大小写不敏感的平台（Windows / macOS 默认）折叠大小写。
+ * 用于「路径相等」判定（例如 Registry 的 file→page 反查）。
+ * 若不做折叠，Windows 上 Registry 写错大小写会导致查找失败，合法改动被误判为越权（L001）。
+ */
+export function pathKey(value: string): string {
+  const normalized = normalizePath(value);
+  return process.platform === 'win32' || process.platform === 'darwin' ? normalized.toLowerCase() : normalized;
+}
+
 export function readYaml<T>(path: string): T {
   if (!existsSync(path)) throw new ProtoError(`缺少文件：${path}`);
   try {

@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { normalizePath, readYaml } from './io.js';
+import { normalizePath, pathKey, readYaml } from './io.js';
 
 /**
  * Page / Component Registry（P0-3）。
@@ -85,7 +85,7 @@ export function loadPageRegistry(root: string): PageRegistry {
       spec: asText(entry.spec) ? normalizePath(asText(entry.spec) as string) : null,
       layout: asText(entry.layout),
     });
-    if (!registry.fileToPage.has(normalizedFile)) registry.fileToPage.set(normalizedFile, id);
+    if (!registry.fileToPage.has(pathKey(normalizedFile))) registry.fileToPage.set(pathKey(normalizedFile), id);
   }
   return registry;
 }
@@ -134,7 +134,7 @@ export function registeredPathsForPage(registry: PageRegistry, pageId: string): 
 
 /** 某个实现文件所属的 page id；未登记时返回 null。 */
 export function pageIdForFile(registry: PageRegistry, path: string): string | null {
-  return registry.fileToPage.get(normalizePath(path)) ?? null;
+  return registry.fileToPage.get(pathKey(path)) ?? null;
 }
 
 /** 声明了同一 capability_key 的组件（只返回重复的键）。 */

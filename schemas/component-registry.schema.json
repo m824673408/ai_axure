@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prototype-workspace.local/schemas/component-registry.schema.json",
+  "title": "Prototype Workspace Component Registry",
+  "description": "components/registry.yaml。对应运行时校验 src/schema.ts 的 checkComponentRegistrySchema。",
+  "x-schema-version": 1,
+  "type": "object",
+  "required": ["components"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "components": {
+      "type": "object",
+      "description": "键为稳定的组件 id；capability_key 用于识别“名称不同但能力重复”的组件",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "purpose": { "type": "string", "description": "V0.1 兼容字段，等价于 description" },
+          "type": { "type": "string" },
+          "capability_key": { "type": "string", "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$" },
+          "scope": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

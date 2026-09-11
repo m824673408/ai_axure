@@ -2,27 +2,34 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://prototype-workspace.local/schemas/scope.schema.json",
   "title": "Prototype Workspace Feature Scope",
+  "description": "features/<id>/scope.yaml。对应运行时校验 src/schema.ts 的 checkScopeSchema。",
+  "x-schema-version": 1,
   "type": "object",
   "required": ["feature", "allowed", "forbidden"],
   "properties": {
+    "schema_version": { "type": "integer", "const": 1, "description": "产物 schema 版本，可省略（省略视为 1）" },
     "feature": {
       "type": "object",
+      "description": "feature.id 必须与所在目录名一致",
       "required": ["id", "name"],
       "properties": {
         "id": { "type": "string", "pattern": "^REQ-[A-Z0-9][A-Z0-9-]*$" },
         "name": { "type": "string", "minLength": 1 }
-      }
+      },
+      "additionalProperties": false
     },
     "allowed": {
       "type": "object",
       "required": ["pages", "shared_components", "product_model", "paths"],
       "properties": {
-        "pages": { "type": "array", "items": { "type": "string" } },
-        "shared_components": { "type": "array", "items": { "type": "string" } },
-        "product_model": { "type": "array", "items": { "type": "string" } },
-        "paths": { "type": "array", "items": { "type": "string" } }
-      }
+        "pages": { "type": "array", "items": { "type": "string" }, "description": "page id，对应 product/routes.yaml 的 route id" },
+        "shared_components": { "type": "array", "items": { "type": "string" }, "description": "组件 id，对应 components/registry.yaml" },
+        "product_model": { "type": "array", "items": { "type": "string" }, "description": "product/<key>.yaml 的文件名（不含扩展名）" },
+        "paths": { "type": "array", "items": { "type": "string" }, "description": "glob 路径，用于未覆盖在 pages/components 内的文件" }
+      },
+      "additionalProperties": false
     },
-    "forbidden": { "type": "array", "items": { "type": "string" } }
-  }
+    "forbidden": { "type": "array", "items": { "type": "string" }, "description": "优先级高于 allowed" }
+  },
+  "additionalProperties": false
 }

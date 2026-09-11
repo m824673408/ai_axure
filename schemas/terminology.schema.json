@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prototype-workspace.local/schemas/terminology.schema.json",
+  "title": "Prototype Workspace Terminology",
+  "description": "product/terminology.yaml。对应运行时校验 src/schema.ts 的 checkTerminologySchema。",
+  "x-schema-version": 1,
+  "type": "object",
+  "required": ["terms"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "terms": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["zh_CN"],
+        "properties": {
+          "zh_CN": { "type": "string", "minLength": 1 },
+          "en": { "type": "string" },
+          "definition": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

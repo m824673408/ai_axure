@@ -4,6 +4,7 @@ import YAML from 'yaml';
 import { changedFiles, currentFeature } from './git.js';
 import { listFilesRecursive, normalizePath, readYaml } from './io.js';
 import { authorizePath, componentNameFromPath, isProductPath } from './scope.js';
+import { checkComponentRegistrySchema, checkNavigationSchema, checkProductSchema, checkRoutesSchema, checkScopeSchema, checkTerminologySchema } from './schema.js';
 import { loadConfig, loadNavigation, loadScope } from './workspace.js';
 import type { LintIssue, LintResult, NavigationItem } from './types.js';
 
@@ -62,26 +63,50 @@ export function runLint(root: string): LintResult {
   const config = loadConfig(root);
   const feature = currentFeature(root);
   const changed = changedFiles(root, config.workspace.base_branch);
-  const structural = routeChecks(root);
-  const issues = [...structural.issues, ...terminologyChecks(root), ...componentChecks(root, changed)];
-  const checks = [...structural.checks, 'Terminology references', 'Component registry'];
+
+  // P0-1：先做 Schema 层校验（结构、必填项、未知字段、重复 ID、非法引用）
+  const productSchema = checkProductSchema(root);
+  const navigationSchema = checkNavigationSchema(root);
+  const routesSchema = checkRoutesSchema(root, productSchema.moduleIds);
+  const registrySchema = checkComponentRegistrySchema(root);
+  const schemaIssues = [...productSchema.issues, ...navigationSchema.issues, ...routesSchema.issues, ...checkTerminologySchema(root), ...registrySchema.issues];
+  for (const ref of navigationSchema.moduleRefs) {
+    if (productSchema.moduleIds.size > 0 && !productSchema.moduleIds.has(ref.module)) {
+      schemaIssues.push({ code: 'L009', title: 'Invalid Reference', message: `导航项引用了不存在的模块：${ref.module}`, file: 'product/navigation.yaml', field: ref.field, fix: `将 ${ref.field} 改为已定义模块 id，或在 product/product.yaml 中补充该模块。` });
+    }
+  }
+  const checks = ['Schema: Product Model', 'Schema: Navigation', 'Schema: Routes', 'Schema: Terminology', 'Schema: Component Registry'];
+
+  // 文件缺失时不再抛出，由上面的 Schema 校验给出可修复的错误
+  const hasRoutes = existsSync(join(root, 'product', 'routes.yaml'));
+  const hasNavigation = existsSync(join(root, 'product', 'navigation.yaml'));
+  const hasTerminology = existsSync(join(root, 'product', 'terminology.yaml'));
+  const structural = hasRoutes && hasNavigation ? routeChecks(root) : { checks: [] as string[], issues: [] as LintIssue[], routeIds: new Set<string>() };
+  const issues = [...schemaIssues, ...structural.issues];
+  issues.push(...(hasTerminology ? terminologyChecks(root) : []), ...(existsSync(join(root, 'components', 'registry.yaml')) ? componentChecks(root, changed) : []));
+  checks.push(...structural.checks, 'Terminology references', 'Component registry');
+
   if (feature) {
+    const scopeSchema = checkScopeSchema(root, feature);
+    issues.push(...scopeSchema.issues);
+    checks.push('Schema: Feature Scope');
+    // 路径解析必须用当前分支的 Feature ID（目录名），不能用 scope.yaml 内声明的 id
     const scope = loadScope(root, feature);
     if (scope) {
       for (const file of changed) {
         const authorization = authorizePath(file.path, scope);
         if (authorization.allowed) continue;
         if (isProductPath(file.path)) {
-          issues.push({ code: 'L006', title: 'Product Model Unauthorized', message: `当前 Feature 未授权修改 Product Model：${file.path}`, file: file.path });
+          issues.push({ code: 'L006', title: 'Product Model Unauthorized', message: `当前 Feature 未授权修改 Product Model：${file.path}`, file: file.path, fix: '将文件加入 scope.yaml 的 allowed.product_model，或撤销对 Product Model 的修改。' });
         } else {
-          issues.push({ code: 'L001', title: 'Scope Violation', message: `当前 Feature Scope 未授权修改：${file.path}`, file: file.path });
+          issues.push({ code: 'L001', title: 'Scope Violation', message: `当前 Feature Scope 未授权修改：${file.path}`, file: file.path, fix: '将文件加入 scope.yaml 的 allowed.paths / allowed.pages，或撤销该文件修改。' });
         }
       }
       checks.push('Feature scope');
     }
   }
   const unique = new Map<string, LintIssue>();
-  for (const issue of issues) unique.set(`${issue.code}:${issue.file ?? ''}:${issue.message}`, issue);
+  for (const issue of issues) unique.set(`${issue.code}:${issue.file ?? ''}:${issue.field ?? ''}:${issue.message}`, issue);
   return { pass: unique.size === 0, feature, changedFiles: changed, checks, issues: [...unique.values()] };
 }
 
@@ -92,7 +117,7 @@ export function formatLint(result: LintResult): string {
   } else {
     lines.push('FAIL');
     for (const issue of result.issues) {
-      lines.push(`✗ ${issue.code} ${issue.title}`, issue.file ? `File: ${issue.file}` : '', issue.message, '');
+      lines.push(`✗ ${issue.code} ${issue.title}`, issue.file ? `File: ${issue.file}` : '', issue.field ? `Field: ${issue.field}` : '', issue.message, issue.fix ? `Fix: ${issue.fix}` : '', '');
     }
     lines.push('Result: BLOCKED');
   }

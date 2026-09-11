@@ -78,18 +78,29 @@ export function runCheck(root: string, options: CheckOptions = {}): CheckResult 
   };
 
   // ② Product Diff（含 Scope 授权判定）
+  // 在基础分支上 changedFiles 恒为空（见 src/git.ts），Scope 判定没有意义——报 PASS 会误导，
+  // 因此如实标为 SKIP（不适用），把"当前处在基础分支"这件事交给头部 ⚠ 与 baseBranchDirty 字段。
+  const onBaseBranch = branch === baseBranch;
   const scopeBlocked = diff.scope.status !== 'PASS';
-  const diffSection: CheckSection = {
-    id: 'diff',
-    title: 'Product Diff',
-    status: scopeBlocked || diff.scope.error ? 'FAIL' : 'PASS',
-    detail: `Changed Files ${diff.changedFiles.length} / Product Model ${diff.productModel.length} / Shared Components ${diff.sharedComponents.length} / Scope ${diff.scope.status}（检查 ${diff.scope.checkedFiles} 个文件）`,
-    problems: [
-      ...(diff.scope.error ? [`Scope 判定不可用：${diff.scope.error}`] : []),
-      ...diff.scope.scopeViolations.map((violation) => `${violation.code} ${violation.file}\n    ${violation.message}`),
-      ...(scopeBlocked && !diff.scope.error && diff.scope.scopeViolations.length === 0 ? ['Scope 判定为 BLOCKED，但没有给出具体违规文件（请报告为工具缺陷）。'] : []),
-    ],
-  };
+  const diffSection: CheckSection = onBaseBranch
+    ? {
+        id: 'diff',
+        title: 'Product Diff',
+        status: 'SKIP',
+        detail: `不适用：当前在基础分支 ${baseBranch} 上（changedFiles 恒为空，任何"变更"结论都不代表合并影响）`,
+        problems: [],
+      }
+    : {
+        id: 'diff',
+        title: 'Product Diff',
+        status: scopeBlocked || diff.scope.error ? 'FAIL' : 'PASS',
+        detail: `Changed Files ${diff.changedFiles.length} / Product Model ${diff.productModel.length} / Shared Components ${diff.sharedComponents.length} / Scope ${diff.scope.status}（检查 ${diff.scope.checkedFiles} 个文件）`,
+        problems: [
+          ...(diff.scope.error ? [`Scope 判定不可用：${diff.scope.error}`] : []),
+          ...diff.scope.scopeViolations.map((violation) => `${violation.code} ${violation.file}\n    ${violation.message}`),
+          ...(scopeBlocked && !diff.scope.error && diff.scope.scopeViolations.length === 0 ? ['Scope 判定为 BLOCKED，但没有给出具体违规文件（请报告为工具缺陷）。'] : []),
+        ],
+      };
 
   // ③ Registry 冲突
   const pageRegistry = loadPageRegistry(root);

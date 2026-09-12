@@ -1,20 +1,21 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import { formatCheck, runCheck } from './check.js';
 import { createDiff, buildSemanticPrompt, formatDiff } from './diff.js';
 import { ProtoError } from './errors.js';
 import { changedFiles, currentBranch, currentFeature, ensureClean, git, isGitRepository } from './git.js';
-import { findWorkspace } from './io.js';
+import { findWorkspace, normalizePath } from './io.js';
 import { formatLint, runLint } from './lint.js';
+import { previewEnvironment } from './preview.js';
 import { requestSemanticDiff } from './semantic.js';
 import { startStudio } from './studio-server.js';
 import { createFeature, initializeWorkspace, loadConfig, loadProduct, loadScope, updateYamlVersion } from './workspace.js';
 
 const program = new Command();
-program.name('proto').description('AI Product Prototype Workspace CLI').version('0.1.0');
+program.name('proto').description('AI Product Prototype Workspace CLI').version('0.2.0-rc.1');
 
 program.command('init')
   .argument('[directory]', '目标目录', '.')
@@ -23,7 +24,11 @@ program.command('init')
   .action((directory: string, options: { git: boolean }) => {
     const target = initializeWorkspace(directory, options.git);
     const product = loadProduct(target);
-    console.log(`Prototype Workspace initialized.\n\nProduct:\n${product.product.name}\n\nPath:\n${target}\n\nRun:\ncd "${target}"\nnpm --prefix prototype install\nnpm --prefix prototype run dev`);
+    const prototype = join(target, 'prototype');
+    const run = process.platform === 'win32'
+      ? `PowerShell:\nSet-Location -LiteralPath "${prototype}"\nnpm install\nnpm run dev\n\nCMD:\ncd /d "${prototype}"\nnpm install\nnpm run dev`
+      : `cd "${prototype}"\nnpm install\nnpm run dev`;
+    console.log(`Prototype Workspace initialized.\n\nProduct:\n${product.product.name}\n\nPath:\n${target}\n\nRun:\n${run}`);
   });
 
 program.command('context')
@@ -91,8 +96,24 @@ program.command('check')
   .description('合并前一次性检查：Schema & Lint / Product Diff / Registry 冲突 / Prototype Build / 风险提示')
   .action((options: { json?: boolean; out?: string; build: boolean }) => {
     const root = findWorkspace();
-    const result = runCheck(root, { build: options.build });
-    if (options.out) writeFileSync(resolve(options.out), `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    const outputPath = options.out ? resolve(options.out) : null;
+    let ignoredPaths: string[] = [];
+    if (outputPath) {
+      if (existsSync(outputPath) && statSync(outputPath).isDirectory()) throw new ProtoError(`--out 必须是文件路径，不能是目录：${outputPath}`);
+      const relativeOutput = normalizePath(relative(root, outputPath));
+      const insideWorkspace = relativeOutput !== '..' && !relativeOutput.startsWith('../') && !isAbsolute(relativeOutput);
+      if (insideWorkspace) {
+        if (git(root, ['ls-files', '--error-unmatch', '--', relativeOutput], true)) {
+          throw new ProtoError(`--out 不允许覆盖 Git 已跟踪文件：${relativeOutput}`);
+        }
+        ignoredPaths = [relativeOutput];
+      }
+    }
+    const result = runCheck(root, { build: options.build, ignoredPaths });
+    if (outputPath) {
+      mkdirSync(dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    }
     console.log(options.json ? JSON.stringify(result, null, 2) : formatCheck(result));
     if (!result.pass) process.exitCode = 1;
   });
@@ -141,7 +162,7 @@ program.command('preview')
       featureName = 'unknown (Git 状态不可读，Preview 仍继续)';
     }
     console.log(`Prototype running:\n\n${config.preview.url}\n\nFeature:\n${featureName}`);
-    const child = spawn(config.preview.command, { cwd: prototype, shell: true, stdio: 'inherit' });
+    const child = spawn(config.preview.command, { cwd: prototype, shell: true, stdio: 'inherit', env: previewEnvironment(root) });
     child.on('exit', (code) => { process.exitCode = code ?? 0; });
   });
 
@@ -154,7 +175,7 @@ program.command('studio')
   });
 
 program.command('release')
-  .argument('<version>', 'SemVer 版本，例如 0.1.0')
+  .argument('<version>', 'SemVer 版本，例如 0.2.0')
   .description('发布 main 版本并创建不可覆盖 Tag')
   .action((version: string) => {
     const root = findWorkspace();

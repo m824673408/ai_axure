@@ -61,10 +61,10 @@ function componentChecks(root: string, changed: ReturnType<typeof changedFiles>)
   return issues;
 }
 
-export function runLint(root: string): LintResult {
+export function runLint(root: string, options: { ignoredPaths?: string[] } = {}): LintResult {
   const config = loadConfig(root);
   const feature = currentFeature(root);
-  const changed = changedFiles(root, config.workspace.base_branch);
+  const changed = changedFiles(root, config.workspace.base_branch, options.ignoredPaths);
 
   // P0-1：先做 Schema 层校验（结构、必填项、未知字段、重复 ID、非法引用）
   const productSchema = checkProductSchema(root);

@@ -9,6 +9,7 @@ import { ProtoError } from './errors.js';
 import { currentBranch, currentFeature, git } from './git.js';
 import { readYaml, writeYaml } from './io.js';
 import { runLint } from './lint.js';
+import { previewEnvironment } from './preview.js';
 import { authorizePath } from './scope.js';
 import { requestSemanticDiff, semanticConfigured } from './semantic.js';
 import { createFeature, listFeatures, loadConfig, loadNavigation, loadProduct, loadScope } from './workspace.js';
@@ -84,9 +85,17 @@ function staticFile(staticDir: string, pathname: string): string | null {
   return target;
 }
 
+function studioStaticDir(): string {
+  const candidates = [
+    fileURLToPath(new URL('../studio/dist', import.meta.url)),
+    fileURLToPath(new URL('../../studio/dist', import.meta.url)),
+  ];
+  return candidates.find((path) => existsSync(join(path, 'index.html'))) ?? candidates[0]!;
+}
+
 export function createStudioServer(options: StudioOptions): StudioController {
   const root = resolve(options.root);
-  const staticDir = options.staticDir ?? fileURLToPath(new URL('../studio/dist', import.meta.url));
+  const staticDir = options.staticDir ?? studioStaticDir();
   let preview: ChildProcess | null = null;
   const logs: string[] = [];
   const addLog = (line: string) => { logs.push(line.trimEnd()); if (logs.length > 160) logs.splice(0, logs.length - 160); };
@@ -113,7 +122,7 @@ export function createStudioServer(options: StudioOptions): StudioController {
       if (install.status !== 0) throw new ProtoError(`Prototype 依赖安装失败，退出码：${install.status ?? 'unknown'}`);
     }
     addLog(`启动 Preview：${config.preview.command}`);
-    preview = spawn(config.preview.command, { cwd: prototype, shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    preview = spawn(config.preview.command, { cwd: prototype, shell: true, stdio: ['ignore', 'pipe', 'pipe'], env: previewEnvironment(root) });
     preview.stdout?.on('data', (chunk: Buffer) => addLog(chunk.toString('utf8')));
     preview.stderr?.on('data', (chunk: Buffer) => addLog(chunk.toString('utf8')));
     preview.on('exit', (code) => { addLog(`Preview 已停止，退出码：${code ?? 'unknown'}`); preview = null; });

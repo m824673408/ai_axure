@@ -1,0 +1,8 @@
+node_modules/
+prototype/node_modules/
+prototype/dist/
+*.log
+.env
+.env.*
+!.env.example
+.proto.llm.yaml

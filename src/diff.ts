@@ -718,10 +718,10 @@ function scenarioReplacements(feature: string, change: CapabilityChange): Requir
 // 主入口
 // ---------------------------------------------------------------------------
 
-export function createDiff(root: string): ProductDiff {
+export function createDiff(root: string, options: { ignoredPaths?: string[] } = {}): ProductDiff {
   const config = loadConfig(root);
   const baseBranch = config.workspace.base_branch;
-  const files = changedFiles(root, baseBranch);
+  const files = changedFiles(root, baseBranch, options.ignoredPaths);
   const undefinedRules: DiffFinding[] = [];
   const risks: DiffFinding[] = [];
 

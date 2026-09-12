@@ -1,5 +1,5 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { ProtoError } from './errors.js';
@@ -84,13 +84,21 @@ export function initializeWorkspace(targetValue: string, withGit = true): string
   if (existsSync(join(target, 'prototype.config.yaml'))) throw new ProtoError(`目标已经是 Prototype Workspace：${target}`);
   if (!isDirectoryEmpty(target)) throw new ProtoError(`目标目录不是空目录，已拒绝覆盖：${target}`);
   mkdirSync(target, { recursive: true });
-  cpSync(templateRoot(), target, {
+  const sourceRoot = templateRoot();
+  cpSync(sourceRoot, target, {
     recursive: true,
     filter: (source) => {
-      const normalized = source.replaceAll('\\', '/');
-      return !normalized.includes('/node_modules') && !normalized.includes('/dist') && !normalized.endsWith('.tsbuildinfo');
+      const normalized = relative(sourceRoot, source).replaceAll('\\', '/');
+      const segments = normalized.split('/');
+      return !segments.includes('node_modules') && !segments.includes('dist') && !normalized.endsWith('.tsbuildinfo');
     },
   });
+  const packedGitignore = join(target, 'gitignore.template');
+  if (existsSync(packedGitignore)) {
+    const gitignore = join(target, '.gitignore');
+    if (existsSync(gitignore)) unlinkSync(packedGitignore);
+    else renameSync(packedGitignore, gitignore);
+  }
   if (withGit) {
     if (!commandExists('git')) throw new ProtoError('未找到 Git，无法初始化 Workspace。');
     git(target, ['init', '-b', 'main']);
@@ -113,7 +121,6 @@ function featureTemplate(id: string, name: string, pages: string[] = [], pagePat
     'requirement.md': `# ${name}\n\n## 背景\n\n请补充需求背景。\n\n## 目标\n\n请补充目标。\n\n## 用户行为\n\n请补充用户行为。\n\n## 页面变化\n\n请补充页面变化。\n\n## 核心规则\n\n请补充核心规则。\n`,
     'scope.yaml': `feature:\n  id: ${id}\n  name: ${name}\n\nallowed:\n  pages:${pagesYaml}\n  shared_components: []\n  product_model: []\n  paths:\n${yamlList(paths, '    ')}\n\nforbidden:\n  - product/terminology.yaml\n  - product/permissions.yaml\n`,
     'scenarios.yaml': `scenarios: []\n`,
-    'changelog.md': `# ${name} Changelog\n\n- 创建 Feature。\n`,
   };
 }
 

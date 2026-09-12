@@ -70,6 +70,11 @@ describe('§10.2 CLI 端到端链', () => {
     const init = run(parent, ['init', 'workspace']);
     expect(init.status, init.stderr).toBe(0);
     expect(init.stdout).toContain('Prototype Workspace initialized');
+    expect(init.stdout).not.toContain('npm --prefix prototype');
+    if (process.platform === 'win32') {
+      expect(init.stdout).toContain('Set-Location -LiteralPath');
+      expect(init.stdout).toContain('cd /d');
+    }
     expect(existsSync(join(root, 'prototype.config.yaml'))).toBe(true);
     expect(existsSync(join(root, 'product', 'pages.yaml'))).toBe(true);
 
@@ -81,6 +86,7 @@ describe('§10.2 CLI 端到端链', () => {
     const scopePath = join(root, 'features', 'REQ-CHAIN-001', 'scope.yaml');
     expect(existsSync(scopePath)).toBe(true);
     expect(readFileSync(scopePath, 'utf8')).toContain('REQ-CHAIN-001');
+    expect(existsSync(join(root, 'features', 'REQ-CHAIN-001', 'changelog.md'))).toBe(false);
 
     // 3) 授权页面（Page Registry 把 attribution_rule 映射到真实实现文件）
     writeFileSync(scopePath, SCOPE, 'utf8');

@@ -57,7 +57,7 @@ describe('P1：proto check 合并前一次性检查', () => {
     expect(diffSection).toContain('Scope BLOCKED');
   });
 
-  it('--out 落盘 JSON，供 CI 读取；内容与 stdout 一致', () => {
+  it('--out 可连续落盘 JSON，报告自身不污染检查结果', () => {
     const root = workspace();
     createFeature(root, 'REQ-CHECK-003', '落盘');
     const out = join(root, 'check-result.json');
@@ -65,17 +65,32 @@ describe('P1：proto check 合并前一次性检查', () => {
     expect(result.status).toBe(0);
     expect(existsSync(out)).toBe(true);
     expect(JSON.parse(readFileSync(out, 'utf8'))).toEqual(JSON.parse(result.stdout));
+    const again = run(root, ['check', '--no-build', '--json', '--out', out]);
+    expect(again.status).toBe(0);
+    expect(JSON.parse(readFileSync(out, 'utf8'))).toEqual(JSON.parse(again.stdout));
+    expect(again.stdout).not.toContain('check-result.json');
+  });
+
+  it('--out 拒绝覆盖 Git 已跟踪文件', () => {
+    const root = workspace();
+    createFeature(root, 'REQ-CHECK-004', '输出保护');
+    const result = run(root, ['check', '--no-build', '--out', join(root, 'product', 'product.yaml')]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('--out 不允许覆盖 Git 已跟踪文件');
   });
 
   it('在基础分支上有未提交变更时：明确提示基础分支不干净，并置 baseBranchDirty=true', () => {
     const root = workspace();
     appendFileSync(join(root, 'product', 'terminology.yaml'), '\n# 直接在 main 上改\n', 'utf8');
     const result = run(root, ['check', '--no-build', '--json']);
+    expect(result.status).toBe(1);
     const body = JSON.parse(result.stdout);
+    expect(body.pass).toBe(false);
     expect(body.baseBranchDirty).toBe(true);
     expect(body.uncommitted).toBeGreaterThan(0);
     expect(body.branch).toBe('main');
     const text = run(root, ['check', '--no-build']);
+    expect(text.status).toBe(1);
     expect(text.stdout).toContain('基础分支不干净');
     expect(text.stdout).toContain('基础分支上 Product Diff 不适用');
   });

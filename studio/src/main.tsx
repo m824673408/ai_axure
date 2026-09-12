@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
+import '@ant-design/v5-patch-for-react-19';
 import { App as AntApp, Alert, Badge, Button, Card, ConfigProvider, Descriptions, Divider, Drawer, Empty, Form, Input, Layout, List, Menu, Modal, Result, Segmented, Select, Space, Spin, Steps, Table, Tag, Typography, theme } from 'antd';
 import { AuditOutlined, CheckCircleFilled, FileTextOutlined, MenuOutlined, PlayCircleOutlined, PlusOutlined, ProjectOutlined, SafetyCertificateOutlined, StopOutlined } from '@ant-design/icons';
 import './studio.css';

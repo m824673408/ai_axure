@@ -45,6 +45,8 @@ export interface CheckResult {
 export interface CheckOptions {
   /** false = `--no-build`，跳过第 4 段 Prototype Build。 */
   build?: boolean;
+  /** 本次检查忽略的工作区相对路径，例如 `--out` 自己生成的报告。 */
+  ignoredPaths?: string[];
 }
 
 function buildSection(root: string, prototypePath: string): CheckSection {
@@ -65,8 +67,9 @@ export function runCheck(root: string, options: CheckOptions = {}): CheckResult 
   const baseBranch = config.workspace.base_branch;
   const branch = currentBranch(root);
   const feature = currentFeature(root);
-  const diff = createDiff(root);
-  const lint = runLint(root);
+  const ignoredPaths = [...new Set(options.ignoredPaths ?? [])];
+  const diff = createDiff(root, { ignoredPaths });
+  const lint = runLint(root, { ignoredPaths });
 
   // ① Schema & Lint
   const lintSection: CheckSection = {
@@ -121,7 +124,9 @@ export function runCheck(root: string, options: CheckOptions = {}): CheckResult 
 
   // ⑤ 风险提示（只提示，不阻塞）
   const baseCommit = git(root, ['rev-parse', '--short', baseBranch], true);
-  const uncommitted = git(root, ['status', '--porcelain'], true).split('\n').filter(Boolean).length;
+  const allUncommitted = git(root, ['status', '--porcelain'], true).split('\n').filter(Boolean).length;
+  const ignoredUncommitted = ignoredPaths.reduce((count, path) => count + git(root, ['status', '--porcelain', '--', path], true).split('\n').filter(Boolean).length, 0);
+  const uncommitted = Math.max(0, allUncommitted - ignoredUncommitted);
   const baseBranchDirty = branch === baseBranch && uncommitted > 0;
   const risks = diff.risks.map((risk) => `${risk.code} ${risk.title}${risk.file ? `（${risk.file}）` : ''}`);
   const riskSection: CheckSection = {
@@ -144,7 +149,7 @@ export function runCheck(root: string, options: CheckOptions = {}): CheckResult 
     uncommitted,
     sections,
     risks,
-    pass: sections.every((section) => section.status !== 'FAIL'),
+    pass: !baseBranchDirty && sections.every((section) => section.status !== 'FAIL'),
   };
 }
 

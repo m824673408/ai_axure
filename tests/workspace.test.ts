@@ -26,6 +26,8 @@ describe('workspace lifecycle', () => {
     expect(currentBranch(root)).toBe('main');
     expect(git(root, ['status', '--porcelain'])).toBe('');
     expect(runLint(root).pass).toBe(true);
+    expect(existsSync(join(root, '.gitignore'))).toBe(true);
+    expect(existsSync(join(root, 'gitignore.template'))).toBe(false);
     expect(existsSync(join(root, '.proto.llm.example.yaml'))).toBe(true);
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toContain('.proto.llm.yaml');
   });
@@ -36,7 +38,8 @@ describe('workspace lifecycle', () => {
     expect(currentBranch(root)).toBe('feature/REQ-001');
     expect(readFileSync(join(root, 'features', 'REQ-001', 'scope.yaml'), 'utf8')).toContain('REQ-001');
     expect(runLint(root).pass).toBe(true);
-    expect(createDiff(root).featureFiles).toHaveLength(4);
+    expect(createDiff(root).featureFiles).toHaveLength(3);
+    expect(existsSync(join(root, 'features', 'REQ-001', 'changelog.md'))).toBe(false);
   });
 
   it('blocks scope and product model violations', () => {

@@ -45,7 +45,7 @@ function parseNameStatus(output: string): ChangedFile[] {
   });
 }
 
-export function changedFiles(root: string, baseBranch: string): ChangedFile[] {
+export function changedFiles(root: string, baseBranch: string, ignoredPaths: string[] = []): ChangedFile[] {
   const branch = currentBranch(root);
   if (branch === baseBranch) return [];
   const mergeBase = git(root, ['merge-base', baseBranch, 'HEAD'], true) || baseBranch;
@@ -56,7 +56,8 @@ export function changedFiles(root: string, baseBranch: string): ChangedFile[] {
     .map((path) => ({ path: normalizePath(path), status: 'U' as const }));
   const map = new Map<string, ChangedFile>();
   for (const file of [...tracked, ...untracked]) map.set(file.path, file);
-  return [...map.values()].sort((a, b) => a.path.localeCompare(b.path));
+  const ignored = new Set(ignoredPaths.map((path) => normalizePath(path)));
+  return [...map.values()].filter((file) => !ignored.has(file.path)).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export function fullDiff(root: string, baseBranch: string): string {

@@ -1,10 +1,10 @@
-# AI Product Prototype Workspace V0.1
+# AI Product Prototype Workspace V0.2 RC
 
 基于 Git、Product Model、Feature Scope 与确定性 Lint 的 AI 原型协作基础设施。它让多个产品经理在同一个可运行 React 原型中并行开发，并在 Review 前阻断越权修改。
 
 ## 交付内容
 
-- TypeScript + Commander CLI：`init`、`context`、`feature create/status`、`lint`、`diff`、`preview`、`studio`、`release`
+- TypeScript + Commander CLI：`init`、`context`、`feature create/status`、`lint`、`diff`、`check`、`preview`、`studio`、`release`
 - 本机 PM 管理台：需求、Scope、场景、产品结构、检查与 Preview 的表单化入口
 - YAML Product Model 与 JSON Schema
 - React + Vite + Ant Design Prototype Template
@@ -21,24 +21,33 @@ npm link
 proto init E:\prototype-workspace
 ```
 
-本机未安装 Python，因此 V0.1 选择需求文档允许的 Node.js + Commander.js 方案。运行环境要求 Node.js 20+ 与 Git。
+运行环境要求 Node.js 20+ 与 Git。当前候选版本为 `0.2.0-rc.1`。
 
 ## CLI
 
 ```text
 proto init [directory] [--no-git]
 proto context [--json]
-proto feature create <FEATURE_ID> --name <NAME>
+proto feature create <FEATURE_ID> --name <NAME> [--page <PAGE_ID>...]
 proto feature status [--json]
 proto lint [--json]
 proto diff [--json]
 proto diff --semantic [--dry-run]
+proto check [--json] [--out <FILE>] [--no-build]
 proto preview [--no-install]
 proto studio [--port 3210] [--no-open]
 proto release <SEMVER>
 ```
 
-`proto init` 只写入空目录，默认初始化 `main` 并创建基线提交。`proto feature create` 只允许从干净的基线分支创建 `feature/<FEATURE_ID>`。
+`proto init` 只写入空目录，默认初始化 `main` 并创建基线提交。初始化成功后，CLI 会分别打印可复制的 PowerShell 与 CMD 命令；依赖安装必须在生成的 `prototype` 目录执行。
+
+`proto feature create` 只允许从干净的基线分支创建 `feature/<FEATURE_ID>`。可重复传入 `--page`，CLI 会通过 Page Registry 自动把页面 ID 展开为实现文件和页面 Spec 授权：
+
+```powershell
+proto feature create REQ-20260912-001 --name "规则版本筛选" --page attribution_rule
+```
+
+`proto check` 是进入 Review 前的单命令门禁。基础分支存在未提交变更、Schema/Lint 失败、Scope 越界、Registry 冲突或 Prototype 构建失败时都会返回非零退出码。`--out` 可写 JSON 报告；同一路径可连续执行，且不允许覆盖 Git 已跟踪文件。
 
 ## PM 管理台
 
@@ -94,7 +103,7 @@ proto diff --semantic
 
 ## Release
 
-`proto release 0.1.0` 只允许在干净的 `main` 执行。命令会运行 Lint、更新版本与 CHANGELOG、创建发布提交及 `prototype-v0.1.0` Annotated Tag，但不会 push。
+`proto release 0.2.0` 只允许在干净的 `main` 执行。命令会运行 Lint、更新 Workspace 产品版本与 CHANGELOG、创建发布提交及 `prototype-v0.2.0` Annotated Tag，但不会 push。本仓库的 `0.2.0-rc.1` 只用于受控试用，不执行该正式发布命令。
 
 ## 目录
 
@@ -105,3 +114,10 @@ proto diff --semantic
 - `tests/`：核心与集成测试
 
 不包含在线工作台、拖拽编辑器、云 Preview、插件、自动 Merge 或复杂权限系统。
+
+## V0.2 RC 使用边界
+
+- 适用于本机、Git 分支化的产品原型受控试用；尚未声明为团队正式版。
+- Preview 展示的是启动时 Feature 与 Lint 快照，进入 Review 必须以最新 `proto check` 为准。
+- `scenarios.yaml` 仍是规则冲突检查和 Studio 场景编辑的数据源；V0.2 不再为新 Feature 生成重复的 Feature Changelog。
+- 自动验收不调用外部 LLM；Semantic Diff 的内容质量由所配置模型决定，但不参与确定性门禁。

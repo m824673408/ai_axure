@@ -249,7 +249,7 @@ program.command('release')
       appendFileSync(changelogPath, `\n## ${version} - ${date}\n\n- 发布 Prototype Workspace ${version}。\n`, 'utf8');
       git(root, ['add', '--', 'product/product.yaml', 'prototype.config.yaml', 'CHANGELOG.md']);
       git(root, ['-c', 'user.name=Prototype Workspace', '-c', 'user.email=prototype@local', 'commit', '-m', `chore(release): ${version}`]);
-      git(root, ['tag', '-a', tag, '-m', `Prototype Workspace ${version}`]);
+      git(root, ['-c', 'user.name=Prototype Workspace', '-c', 'user.email=prototype@local', 'tag', '-a', tag, '-m', `Prototype Workspace ${version}`]);
       console.log(`Release created.\n\nVersion:\n${version}\n\nTag:\n${tag}\n\nPush:\ngit push origin ${config.workspace.base_branch} ${tag}`);
     } catch (error) {
       for (const [path, content] of backups) writeFileSync(path, content, 'utf8');

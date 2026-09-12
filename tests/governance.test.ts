@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -60,6 +60,7 @@ describe('GitHub governance', () => {
   it('setup 对自定义治理文件拒绝覆盖', () => {
     const root = scratch('proto-governance-conflict-');
     initializeWorkspace(root, true);
+    mkdirSync(join(root, '.github'), { recursive: true });
     writeFileSync(join(root, '.github', 'CODEOWNERS'), '# custom\n', 'utf8');
     expect(() => setupGithubGovernance(root, 'm824673408', 'v0.2.0-rc.2')).toThrow(/拒绝覆盖/);
     expect(readFileSync(join(root, '.github', 'CODEOWNERS'), 'utf8')).toBe('# custom\n');

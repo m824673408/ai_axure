@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { formatLint, runLint } from '../src/lint.js';
+import { freezeScope } from '../src/scope-lock.js';
 import { createFeature, initializeWorkspace } from '../src/workspace.js';
 import { patch } from './helpers.js';
 
@@ -32,6 +33,7 @@ describe('P0-1 schema validation', () => {
   it('feature 分支上 scope 也通过 schema 校验', () => {
     const root = workspace();
     createFeature(root, 'REQ-001', '规则历史版本');
+    freezeScope(root, 'REQ-001');
     const result = runLint(root);
     expect(result.pass).toBe(true);
     expect(result.checks).toContain('Schema: Feature Scope');

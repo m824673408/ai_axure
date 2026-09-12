@@ -7,13 +7,16 @@
 ```bash
 proto context
 proto feature create REQ-001 --name "规则历史版本"
-proto lint
+proto scope freeze
 proto diff
+proto check
 proto preview
 proto studio
 ```
 
-`proto preview` 会在首次启动时安装 `prototype` 依赖。所有开发必须位于 `feature/*` 分支，Product Model 和公共组件变更必须在 Scope 中显式授权。
+`feature create` 后先完成 Requirement、Scope 和 Scenarios，再由 PM 执行 `proto scope freeze`。所有开发必须位于 `feature/*` 分支；缺少锁或修改了 Scope 时，`proto lint/check` 会以 L014 BLOCK。Product Model 和公共组件变更必须在 Scope 中显式授权。
+
+本地锁只检测 Scope 漂移，不证明审批身份。GitHub Workspace 还必须保留 `CODEOWNERS`、固定版本的 `Prototype Gate / check` 和受保护的 `main` 分支。
 
 ## PM 管理台
 

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
+import { freezeScope } from '../src/scope-lock.js';
 import { createFeature, initializeWorkspace } from '../src/workspace.js';
 
 const roots: string[] = [];
@@ -28,6 +29,7 @@ describe('P1：proto check 合并前一次性检查', () => {
   it('在干净的 Feature 工作区通过，5 段齐全且 --no-build 时 Build 段为 SKIP', () => {
     const root = workspace();
     createFeature(root, 'REQ-CHECK-001', '检查通过');
+    freezeScope(root, 'REQ-CHECK-001');
     const result = run(root, ['check', '--no-build', '--json']);
     expect(result.status).toBe(0);
     const body = JSON.parse(result.stdout);
@@ -60,6 +62,7 @@ describe('P1：proto check 合并前一次性检查', () => {
   it('--out 可连续落盘 JSON，报告自身不污染检查结果', () => {
     const root = workspace();
     createFeature(root, 'REQ-CHECK-003', '落盘');
+    freezeScope(root, 'REQ-CHECK-003');
     const out = join(root, 'check-result.json');
     const result = run(root, ['check', '--no-build', '--json', '--out', out]);
     expect(result.status).toBe(0);

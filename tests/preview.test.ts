@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { previewEnvironment } from '../src/preview.js';
+import { freezeScope } from '../src/scope-lock.js';
 import { createFeature, initializeWorkspace } from '../src/workspace.js';
 
 const roots: string[] = [];
@@ -17,6 +18,7 @@ describe('Preview runtime context', () => {
     roots.push(root);
     initializeWorkspace(root, true);
     createFeature(root, 'REQ-PREVIEW-001', '动态预览', ['attribution_rule']);
+    freezeScope(root, 'REQ-PREVIEW-001');
 
     const env = previewEnvironment(root, {});
     expect(env.VITE_PROTO_BRANCH).toBe('feature/REQ-PREVIEW-001');

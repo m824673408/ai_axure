@@ -12,6 +12,7 @@ import { runLint } from './lint.js';
 import { previewEnvironment } from './preview.js';
 import { authorizePath } from './scope.js';
 import { requestSemanticDiff, semanticConfigured } from './semantic.js';
+import { freezeScope, scopeLockStatus } from './scope-lock.js';
 import { createFeature, listFeatures, loadConfig, loadNavigation, loadProduct, loadScope } from './workspace.js';
 import type { ScopeModel } from './types.js';
 
@@ -101,8 +102,8 @@ export function createStudioServer(options: StudioOptions): StudioController {
   const addLog = (line: string) => { logs.push(line.trimEnd()); if (logs.length > 160) logs.splice(0, logs.length - 160); };
   const previewState = (): PreviewState => ({ running: Boolean(preview && preview.exitCode === null), url: loadConfig(root).preview.url, logs: [...logs] });
   const status = () => {
-    const config = loadConfig(root); const lint = runLint(root); const diff = createDiff(root);
-    return { product: loadProduct(root).product, branch: currentBranch(root), feature: currentFeature(root), clean: !git(root, ['status', '--porcelain']), lint, diff, preview: previewState(), semanticConfigured: semanticConfigured(root), baseBranch: config.workspace.base_branch };
+    const config = loadConfig(root); const lint = runLint(root); const diff = createDiff(root); const feature = currentFeature(root);
+    return { product: loadProduct(root).product, branch: currentBranch(root), feature, scopeLock: feature ? scopeLockStatus(root, feature) : null, clean: !git(root, ['status', '--porcelain']), lint, diff, preview: previewState(), semanticConfigured: semanticConfigured(root), baseBranch: config.workspace.base_branch };
   };
   const requireCurrentFeature = (): { id: string; scope: ScopeModel } => {
     const id = currentFeature(root);
@@ -147,6 +148,13 @@ export function createStudioServer(options: StudioOptions): StudioController {
       if (path === '/api/status' && method === 'GET') return reply(response, 200, status());
       if (path === '/api/features' && method === 'GET') return reply(response, 200, { features: listFeatures(root), current: currentFeature(root) });
       if (path === '/api/features' && method === 'POST') { const data = featureInput.parse(await body(request)); createFeature(root, data.id, data.name.trim()); return reply(response, 201, status()); }
+      const lockMatch = path.match(/^\/api\/features\/(REQ-[A-Z0-9-]+)\/scope-lock$/);
+      if (lockMatch) {
+        const id = lockMatch[1]; if (!id) throw new ProtoError('无效请求。');
+        checkFeature(id);
+        if (method === 'GET') return reply(response, 200, scopeLockStatus(root, id));
+        if (method === 'POST') return reply(response, 200, freezeScope(root, id));
+      }
       const match = path.match(/^\/api\/features\/(REQ-[A-Z0-9-]+)\/(requirement|scope|scenarios)$/);
       if (match) {
         const [, id, resource] = match; if (!id || !resource) throw new ProtoError('无效请求。');

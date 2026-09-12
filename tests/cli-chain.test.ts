@@ -67,7 +67,7 @@ describe('§10.2 CLI 端到端链', () => {
     const root = join(parent, 'workspace');
 
     // 1) init
-    const init = run(parent, ['init', 'workspace']);
+    const init = run(parent, ['init', 'workspace', '--github-owner', 'test-owner']);
     expect(init.status, init.stderr).toBe(0);
     expect(init.stdout).toContain('Prototype Workspace initialized');
     expect(init.stdout).not.toContain('npm --prefix prototype');
@@ -90,6 +90,7 @@ describe('§10.2 CLI 端到端链', () => {
 
     // 3) 授权页面（Page Registry 把 attribution_rule 映射到真实实现文件）
     writeFileSync(scopePath, SCOPE, 'utf8');
+    expect(run(root, ['scope', 'freeze']).status).toBe(0);
     append(root, join('prototype', 'src', 'pages', 'AttributionRulesPage.tsx'), '// 合法改动');
     const lintPass = run(root, ['lint']);
     expect(lintPass.stdout).toContain('Result: PASS');
@@ -154,8 +155,9 @@ describe('§10.2 CLI 端到端链', () => {
     const parent = mkdtempSync(join(tmpdir(), 'proto-chain-build-'));
     parents.push(parent);
     const root = join(parent, 'workspace');
-    expect(run(parent, ['init', 'workspace']).status).toBe(0);
+    expect(run(parent, ['init', 'workspace', '--github-owner', 'test-owner']).status).toBe(0);
     expect(run(root, ['feature', 'create', 'REQ-CHAIN-002', '--name', '构建链路']).status).toBe(0);
+    expect(run(root, ['scope', 'freeze']).status).toBe(0);
     expect(run(root, ['lint']).status).toBe(0);
     // 依赖安装在 prototype 目录内执行：不使用 npm --prefix（相对前缀在 Windows 上会被解析到 cwd 之外）
     const app = join(root, 'prototype');

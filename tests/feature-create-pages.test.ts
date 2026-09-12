@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readYaml } from '../src/io.js';
 import { runLint } from '../src/lint.js';
+import { freezeScope } from '../src/scope-lock.js';
 import { loadPageRegistry, registeredPathsForPage } from '../src/registry.js';
 import { createFeature, initializeWorkspace } from '../src/workspace.js';
 
@@ -84,6 +85,7 @@ describe('P0-2 方案 A：feature create --page 经 Page Registry 自动授权',
     const root = workspace();
     const { pageId, file } = registeredPage(root);
     createFeature(root, 'REQ-PAGE-006', '授权生效', [pageId]);
+    freezeScope(root, 'REQ-PAGE-006');
     appendFileSync(join(root, file), '\n// P0-2 方案 A 授权验证\n', 'utf8');
 
     const result = runLint(root);

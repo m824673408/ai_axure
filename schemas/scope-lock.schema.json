@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/m824673408/ai_axure/schemas/scope-lock.schema.json",
+  "title": "Prototype Scope Lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contractVersion", "featureId", "scopeDigest"],
+  "properties": {
+    "contractVersion": { "const": "1" },
+    "featureId": { "type": "string", "pattern": "^REQ-[A-Z0-9][A-Z0-9-]*$" },
+    "scopeDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+  }
+}

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { createDiff } from './diff.js';
 import { ProtoError } from './errors.js';
-import { currentBranch, currentFeature, git, isGitRepository } from './git.js';
+import { baseReference, currentBranch, currentFeature, git, isGitRepository } from './git.js';
 import { runLint } from './lint.js';
 import { duplicateCapabilityKeys, loadComponentRegistry, loadPageRegistry } from './registry.js';
 import { loadConfig } from './workspace.js';
@@ -123,7 +123,7 @@ export function runCheck(root: string, options: CheckOptions = {}): CheckResult 
     : buildSection(root, config.paths.prototype);
 
   // ⑤ 风险提示（只提示，不阻塞）
-  const baseCommit = git(root, ['rev-parse', '--short', baseBranch], true);
+  const baseCommit = git(root, ['rev-parse', '--short', baseReference(root, baseBranch)], true);
   const allUncommitted = git(root, ['status', '--porcelain'], true).split('\n').filter(Boolean).length;
   const ignoredUncommitted = ignoredPaths.reduce((count, path) => count + git(root, ['status', '--porcelain', '--', path], true).split('\n').filter(Boolean).length, 0);
   const uncommitted = Math.max(0, allUncommitted - ignoredUncommitted);

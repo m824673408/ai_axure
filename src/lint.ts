@@ -7,6 +7,8 @@ import { authorizePath, componentNameFromPath, isProductPath } from './scope.js'
 import { checkComponentRegistrySchema, checkNavigationSchema, checkPageRegistrySchema, checkProductSchema, checkRoutesSchema, checkScopeSchema, checkTerminologySchema } from './schema.js';
 import { duplicateCapabilityKeys, loadComponentRegistry, loadPageRegistry } from './registry.js';
 import { crossFeatureSemanticsIssues, knownProductModelKeys, scopeReferenceIssues } from './lint-rules.js';
+import { governanceLintIssue } from './governance.js';
+import { scopeLockStatus } from './scope-lock.js';
 import { loadConfig, loadNavigation, loadScope } from './workspace.js';
 import type { LintIssue, LintResult, NavigationItem } from './types.js';
 
@@ -99,6 +101,9 @@ export function runLint(root: string, options: { ignoredPaths?: string[] } = {})
   const issues = [...schemaIssues, ...structural.issues];
   issues.push(...(hasTerminology ? terminologyChecks(root) : []), ...(existsSync(join(root, 'components', 'registry.yaml')) ? componentChecks(root, changed) : []));
   checks.push(...structural.checks, 'Terminology references', 'Component registry');
+  const governanceIssues = governanceLintIssue(root);
+  issues.push(...governanceIssues.map((issue) => ({ code: 'L015' as const, title: 'GitHub Governance Missing', message: issue.message, file: issue.file, fix: '运行 proto governance setup --github-owner <LOGIN> --tool-ref <TAG>，或人工恢复受支持的治理模板。' })));
+  checks.push('GitHub governance');
   // P0-4：跨 Feature 产品语义重复（只有同一工作区存在多个 Feature 时才可能触发）
   const crossFeatureIssues = crossFeatureSemanticsIssues(root);
   issues.push(...crossFeatureIssues);
@@ -108,8 +113,13 @@ export function runLint(root: string, options: { ignoredPaths?: string[] } = {})
     const scopeSchema = checkScopeSchema(root, feature);
     issues.push(...scopeSchema.issues);
     checks.push('Schema: Feature Scope');
+    const lock = scopeLockStatus(root, feature);
+    if (lock.status !== 'LOCKED') {
+      issues.push({ code: 'L014', title: 'Scope Lock Required', message: lock.reason ?? `Scope 锁状态为 ${lock.status}。`, file: lock.lockFile, fix: '由产品经理确认 Scope 后运行 proto scope freeze；Scope 变化后必须重新冻结并重新审批。' });
+    }
+    checks.push('Scope lock');
     // 路径解析必须用当前分支的 Feature ID（目录名），不能用 scope.yaml 内声明的 id
-    const scope = loadScope(root, feature);
+    const scope = scopeSchema.issues.length === 0 ? loadScope(root, feature) : null;
     if (scope) {
       // P0-4：Scope 里声明了不存在的页面 / 组件 / Product Model（L012）
       const knownPages = new Set<string>([...flattenPages(loadNavigation(root)), ...pageRegistry.entries.keys()]);

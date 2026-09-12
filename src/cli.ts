@@ -7,28 +7,78 @@ import { formatCheck, runCheck } from './check.js';
 import { createDiff, buildSemanticPrompt, formatDiff } from './diff.js';
 import { ProtoError } from './errors.js';
 import { changedFiles, currentBranch, currentFeature, ensureClean, git, isGitRepository } from './git.js';
+import { governanceStatus, setupGithubGovernance } from './governance.js';
 import { findWorkspace, normalizePath } from './io.js';
 import { formatLint, runLint } from './lint.js';
 import { previewEnvironment } from './preview.js';
 import { requestSemanticDiff } from './semantic.js';
+import { freezeScope, scopeLockStatus } from './scope-lock.js';
 import { startStudio } from './studio-server.js';
 import { createFeature, initializeWorkspace, loadConfig, loadProduct, loadScope, updateYamlVersion } from './workspace.js';
 
 const program = new Command();
-program.name('proto').description('AI Product Prototype Workspace CLI').version('0.2.0-rc.1');
+program.name('proto').description('AI Product Prototype Workspace CLI').version('0.2.0-rc.2');
 
 program.command('init')
   .argument('[directory]', '目标目录', '.')
   .option('--no-git', '不初始化 Git 仓库')
+  .option('--github-owner <login>', 'GitHub CODEOWNER 登录名（Git 初始化模式必填）')
   .description('初始化 Prototype Workspace')
-  .action((directory: string, options: { git: boolean }) => {
-    const target = initializeWorkspace(directory, options.git);
+  .action((directory: string, options: { git: boolean; githubOwner?: string }) => {
+    if (options.git && !options.githubOwner) throw new ProtoError('Git 初始化模式必须提供 --github-owner；使用 --no-git 可创建无 Git 治理的 Workspace。');
+    const target = initializeWorkspace(directory, options.git, options.githubOwner);
     const product = loadProduct(target);
     const prototype = join(target, 'prototype');
     const run = process.platform === 'win32'
       ? `PowerShell:\nSet-Location -LiteralPath "${prototype}"\nnpm install\nnpm run dev\n\nCMD:\ncd /d "${prototype}"\nnpm install\nnpm run dev`
       : `cd "${prototype}"\nnpm install\nnpm run dev`;
     console.log(`Prototype Workspace initialized.\n\nProduct:\n${product.product.name}\n\nPath:\n${target}\n\nRun:\n${run}`);
+  });
+
+const scope = program.command('scope').description('管理当前 Feature Scope 锁');
+scope.command('status')
+  .option('--json', '输出 JSON')
+  .description('显示当前 Scope 冻结状态')
+  .action((options: { json?: boolean }) => {
+    const root = findWorkspace();
+    const id = currentFeature(root);
+    if (!id) throw new ProtoError('当前 Branch 不是 feature/*，没有活动 Scope。');
+    const output = scopeLockStatus(root, id);
+    if (options.json) return console.log(JSON.stringify(output, null, 2));
+    console.log(`SCOPE LOCK\n\nStatus: ${output.status}\nFeature: ${output.featureId}\nCurrent digest: ${output.currentDigest ?? 'Unavailable'}\nLocked digest: ${output.lockedDigest ?? 'None'}${output.reason ? `\nReason: ${output.reason}` : ''}`);
+    if (output.status !== 'LOCKED') process.exitCode = 1;
+  });
+
+scope.command('freeze')
+  .option('--json', '输出 JSON')
+  .description('确认并冻结当前 Feature Scope')
+  .action((options: { json?: boolean }) => {
+    const root = findWorkspace();
+    const id = currentFeature(root);
+    if (!id) throw new ProtoError('当前 Branch 不是 feature/*，没有可冻结的 Scope。');
+    const output = freezeScope(root, id);
+    if (options.json) return console.log(JSON.stringify(output, null, 2));
+    console.log(`Scope frozen.\n\nFeature:\n${id}\n\nDigest:\n${output.currentDigest}\n\n注意：本地锁只检测范围漂移，身份审批由 GitHub CODEOWNERS 与分支保护完成。`);
+  });
+
+const governance = program.command('governance').description('管理 GitHub 强制门禁');
+governance.command('setup')
+  .requiredOption('--github-owner <login>', 'GitHub CODEOWNER 登录名')
+  .requiredOption('--tool-ref <tag>', '公开工具仓库的不可变版本 Tag')
+  .description('写入 CODEOWNERS、固定版本 CI 和治理配置')
+  .action((options: { githubOwner: string; toolRef: string }) => {
+    const output = setupGithubGovernance(findWorkspace(), options.githubOwner, options.toolRef);
+    console.log(`GitHub governance configured.\n\nOwner:\n@${output.owner}\n\nTool:\n${output.toolRepository}#${output.toolRef}\n\nRequired status context:\nPrototype Gate / check`);
+  });
+
+governance.command('status')
+  .option('--json', '输出 JSON')
+  .description('检查本地 GitHub 治理文件是否完整且未被弱化')
+  .action((options: { json?: boolean }) => {
+    const output = governanceStatus(findWorkspace());
+    if (options.json) return console.log(JSON.stringify(output, null, 2));
+    console.log(`GITHUB GOVERNANCE\n\nStatus: ${output.status}\nOwner: ${output.owner ? `@${output.owner}` : 'Not configured'}\nTool: ${output.toolRepository && output.toolRef ? `${output.toolRepository}#${output.toolRef}` : 'Not configured'}${output.issues.length ? `\n\nIssues:\n${output.issues.map((issue) => `- ${issue.file}: ${issue.message}`).join('\n')}` : ''}`);
+    if (output.enabled && output.status !== 'READY') process.exitCode = 1;
   });
 
 program.command('context')

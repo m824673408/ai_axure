@@ -37,6 +37,9 @@ describe('Studio local API', () => {
     const created = await request('/api/features', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'REQ-STUDIO-001', name: 'Studio 管理' }) });
     expect(created.response.status).toBe(201);
     expect(created.body.feature).toBe('REQ-STUDIO-001');
+    expect(created.body.scopeLock.status).toBe('MISSING');
+    const frozen = await request('/api/features/REQ-STUDIO-001/scope-lock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
+    expect(frozen.body.status).toBe('LOCKED');
     const features = await request('/api/features');
     expect(features.body.features.some((item: any) => item.id === 'REQ-STUDIO-001')).toBe(true);
   });
@@ -44,6 +47,7 @@ describe('Studio local API', () => {
   it('saves structured Feature records and blocks unauthorized Product Model writes', async () => {
     const { request } = await studio();
     await request('/api/features', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'REQ-STUDIO-002', name: '范围检查' }) });
+    expect((await request('/api/features/REQ-STUDIO-002/scope-lock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).body.status).toBe('LOCKED');
     const requirement = await request('/api/features/REQ-STUDIO-002/requirement');
     const savedRequirement = await request('/api/features/REQ-STUDIO-002/requirement', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...requirement.body, goal: '在管理台维护需求。', notes: '仅用于测试。' }) });
     expect(savedRequirement.body.lint.feature).toBe('REQ-STUDIO-002');
@@ -56,6 +60,7 @@ describe('Studio local API', () => {
     scope.body.allowed.product_model = ['product', 'navigation', 'routes', 'terminology'];
     const savedScope = await request('/api/features/REQ-STUDIO-002/scope', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ allowed: scope.body.allowed, forbidden: [] }) });
     expect(savedScope.response.status).toBe(200);
+    expect(savedScope.body.scopeLock.status).toBe('STALE');
     const allowed = await request('/api/product-model', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) });
     expect(allowed.response.status).toBe(200);
     expect(allowed.body.product.name).toBe('新版归因平台');
@@ -67,6 +72,7 @@ describe('Studio local API', () => {
   it('exposes lint, diff, missing semantic configuration, and Studio-owned Preview lifecycle', async () => {
     const { root, request } = await studio();
     await request('/api/features', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'REQ-STUDIO-003', name: '检查' }) });
+    expect((await request('/api/features/REQ-STUDIO-003/scope-lock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).body.status).toBe('LOCKED');
     expect((await request('/api/lint', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })).body.pass).toBe(true);
     expect((await request('/api/diff')).body.featureFiles.length).toBeGreaterThan(0);
     const semantic = await request('/api/semantic-diff', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });

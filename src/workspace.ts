@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { ProtoError } from './errors.js';
 import { commandExists, currentFeature, git, isGitRepository } from './git.js';
+import { setupGithubGovernance } from './governance.js';
 import { findWorkspace, isDirectoryEmpty, readYaml } from './io.js';
 import { loadPageRegistry, registeredPathsForPage } from './registry.js';
 import type { NavigationItem, ProductModel, ScopeModel, WorkspaceConfig } from './types.js';
@@ -12,6 +13,10 @@ const configSchema = z.object({
   workspace: z.object({ name: z.string().min(1), version: z.string().min(1), base_branch: z.string().min(1) }),
   paths: z.object({ product: z.string(), features: z.string(), prototype: z.string(), components: z.string() }),
   preview: z.object({ install_command: z.string(), command: z.string(), url: z.string() }),
+  governance: z.object({
+    scope_lock: z.literal('required'),
+    github: z.object({ owner: z.string(), tool_repository: z.string(), tool_ref: z.string() }),
+  }).optional(),
 });
 
 const productSchema = z.object({
@@ -79,7 +84,7 @@ export function templateRoot(): string {
   return match;
 }
 
-export function initializeWorkspace(targetValue: string, withGit = true): string {
+export function initializeWorkspace(targetValue: string, withGit = true, githubOwner?: string): string {
   const target = resolve(targetValue);
   if (existsSync(join(target, 'prototype.config.yaml'))) throw new ProtoError(`目标已经是 Prototype Workspace：${target}`);
   if (!isDirectoryEmpty(target)) throw new ProtoError(`目标目录不是空目录，已拒绝覆盖：${target}`);
@@ -101,6 +106,7 @@ export function initializeWorkspace(targetValue: string, withGit = true): string
   }
   if (withGit) {
     if (!commandExists('git')) throw new ProtoError('未找到 Git，无法初始化 Workspace。');
+    if (githubOwner) setupGithubGovernance(target, githubOwner, 'v0.2.0-rc.2');
     git(target, ['init', '-b', 'main']);
     git(target, ['add', '--', '.']);
     git(target, ['-c', 'user.name=Prototype Workspace', '-c', 'user.email=prototype@local', 'commit', '-m', 'chore: initialize prototype workspace']);

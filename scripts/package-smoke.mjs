@@ -60,7 +60,7 @@ try {
   const cli = join(scratch, 'node_modules', 'product-prototype-core', 'bin', 'proto.js');
   if (!existsSync(cli)) throw new Error('Installed package is missing bin/proto.js.');
 
-  const initialized = run(process.execPath, [cli, 'init', workspace], scratch);
+  const initialized = run(process.execPath, [cli, 'init', workspace, '--github-owner', 'test-owner'], scratch);
   if (initialized.stdout.includes('npm --prefix prototype')) throw new Error('init still prints the broken relative npm --prefix command.');
   if (process.platform === 'win32' && (!initialized.stdout.includes('Set-Location -LiteralPath') || !initialized.stdout.includes('cd /d'))) {
     throw new Error('init did not print both PowerShell and CMD instructions.');
@@ -72,6 +72,7 @@ try {
   if (existsSync(join(workspace, 'features', 'REQ-PACKAGE-001', 'changelog.md'))) {
     throw new Error('New Feature still contains the redundant changelog.md.');
   }
+  run(process.execPath, [cli, 'scope', 'freeze'], workspace);
   const report = join(workspace, 'output', 'check-result.json');
   run(process.execPath, [cli, 'check', '--no-build', '--out', report], workspace);
   run(process.execPath, [cli, 'check', '--no-build', '--out', report], workspace);

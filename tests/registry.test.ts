@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runLint } from '../src/lint.js';
 import { loadPageRegistry } from '../src/registry.js';
 import { authorizePath } from '../src/scope.js';
+import { freezeScope } from '../src/scope-lock.js';
 import { createFeature, initializeWorkspace, loadScope } from '../src/workspace.js';
 import { appendText as append, patch } from './helpers.js';
 
@@ -40,6 +41,7 @@ forbidden:
 function featureWithPageScope(root: string): void {
   createFeature(root, 'REQ-001', '归因规则版本对比');
   writeFileSync(join(root, 'features', 'REQ-001', 'scope.yaml'), SCOPE_WITH_PAGE, 'utf8');
+  freezeScope(root, 'REQ-001');
 }
 
 describe('P0-3 page / component registry', () => {

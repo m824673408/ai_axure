@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createDiff } from '../src/diff.js';
 import { currentBranch, git } from '../src/git.js';
 import { runLint } from '../src/lint.js';
+import { freezeScope } from '../src/scope-lock.js';
 import { createFeature, initializeWorkspace, loadProduct } from '../src/workspace.js';
 
 const roots: string[] = [];
@@ -26,6 +27,8 @@ describe('workspace lifecycle', () => {
     expect(currentBranch(root)).toBe('main');
     expect(git(root, ['status', '--porcelain'])).toBe('');
     expect(runLint(root).pass).toBe(true);
+    expect(existsSync(join(root, '.gitignore'))).toBe(true);
+    expect(existsSync(join(root, 'gitignore.template'))).toBe(false);
     expect(existsSync(join(root, '.proto.llm.example.yaml'))).toBe(true);
     expect(readFileSync(join(root, '.gitignore'), 'utf8')).toContain('.proto.llm.yaml');
   });
@@ -33,10 +36,12 @@ describe('workspace lifecycle', () => {
   it('creates a feature branch and scaffold', () => {
     const root = workspace();
     createFeature(root, 'REQ-001', '规则历史版本');
+    freezeScope(root, 'REQ-001');
     expect(currentBranch(root)).toBe('feature/REQ-001');
     expect(readFileSync(join(root, 'features', 'REQ-001', 'scope.yaml'), 'utf8')).toContain('REQ-001');
     expect(runLint(root).pass).toBe(true);
     expect(createDiff(root).featureFiles).toHaveLength(4);
+    expect(existsSync(join(root, 'features', 'REQ-001', 'changelog.md'))).toBe(false);
   });
 
   it('blocks scope and product model violations', () => {
@@ -74,6 +79,8 @@ describe('workspace lifecycle', () => {
     const b = workspace();
     createFeature(a, 'REQ-PM-A', '归因规则调整');
     createFeature(b, 'REQ-PM-B', '媒体配置调整');
+    freezeScope(a, 'REQ-PM-A');
+    freezeScope(b, 'REQ-PM-B');
     expect(currentBranch(a)).toBe('feature/REQ-PM-A');
     expect(currentBranch(b)).toBe('feature/REQ-PM-B');
     expect(runLint(a).pass).toBe(true);

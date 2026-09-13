@@ -15,6 +15,14 @@ export interface WorkspaceConfig {
     command: string;
     url: string;
   };
+  governance?: {
+    scope_lock: 'required';
+    github: {
+      owner: string;
+      tool_repository: string;
+      tool_ref: string;
+    };
+  };
 }
 
 export interface ProductModel {
@@ -46,9 +54,13 @@ export interface ChangedFile {
 }
 
 export interface LintIssue {
-  code: 'L001' | 'L002' | 'L003' | 'L004' | 'L005' | 'L006';
+  code: 'L001' | 'L002' | 'L003' | 'L004' | 'L005' | 'L006' | 'L007' | 'L008' | 'L009' | 'L010' | 'L011' | 'L012' | 'L013' | 'L014' | 'L015';
   title: string;
   message: string;
+  /** YAML/JSON 字段路径，例如 routes.attribution_rule.module（P0-1 起）。 */
+  field?: string;
+  /** 可执行的修复建议（P0-1 起）。 */
+  fix?: string;
   file?: string;
 }
 

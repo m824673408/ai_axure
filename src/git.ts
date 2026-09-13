@@ -20,7 +20,9 @@ export function isGitRepository(root: string): boolean {
 }
 
 export function currentBranch(root: string): string {
-  return git(root, ['branch', '--show-current']);
+  const local = git(root, ['branch', '--show-current']);
+  if (local) return local;
+  return process.env.GITHUB_HEAD_REF?.trim() || '';
 }
 
 export function ensureClean(root: string): void {
@@ -30,6 +32,12 @@ export function ensureClean(root: string): void {
 export function currentFeature(root: string): string | null {
   const branch = currentBranch(root);
   return branch.startsWith('feature/') ? branch.slice('feature/'.length) : null;
+}
+
+export function baseReference(root: string, baseBranch: string): string {
+  if (git(root, ['rev-parse', '--verify', baseBranch], true)) return baseBranch;
+  if (git(root, ['rev-parse', '--verify', `origin/${baseBranch}`], true)) return `origin/${baseBranch}`;
+  return baseBranch;
 }
 
 function parseNameStatus(output: string): ChangedFile[] {
@@ -45,10 +53,11 @@ function parseNameStatus(output: string): ChangedFile[] {
   });
 }
 
-export function changedFiles(root: string, baseBranch: string): ChangedFile[] {
+export function changedFiles(root: string, baseBranch: string, ignoredPaths: string[] = []): ChangedFile[] {
   const branch = currentBranch(root);
   if (branch === baseBranch) return [];
-  const mergeBase = git(root, ['merge-base', baseBranch, 'HEAD'], true) || baseBranch;
+  const baseRef = baseReference(root, baseBranch);
+  const mergeBase = git(root, ['merge-base', baseRef, 'HEAD'], true) || baseRef;
   const tracked = parseNameStatus(git(root, ['diff', '--name-status', mergeBase]));
   const untracked = git(root, ['ls-files', '--others', '--exclude-standard'], true)
     .split(/\r?\n/)
@@ -56,13 +65,15 @@ export function changedFiles(root: string, baseBranch: string): ChangedFile[] {
     .map((path) => ({ path: normalizePath(path), status: 'U' as const }));
   const map = new Map<string, ChangedFile>();
   for (const file of [...tracked, ...untracked]) map.set(file.path, file);
-  return [...map.values()].sort((a, b) => a.path.localeCompare(b.path));
+  const ignored = new Set(ignoredPaths.map((path) => normalizePath(path)));
+  return [...map.values()].filter((file) => !ignored.has(file.path)).sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export function fullDiff(root: string, baseBranch: string): string {
   const branch = currentBranch(root);
   if (branch === baseBranch) return '';
-  const mergeBase = git(root, ['merge-base', baseBranch, 'HEAD'], true) || baseBranch;
+  const baseRef = baseReference(root, baseBranch);
+  const mergeBase = git(root, ['merge-base', baseRef, 'HEAD'], true) || baseRef;
   const tracked = git(root, ['diff', '--no-ext-diff', '--unified=3', mergeBase], true);
   const additions: string[] = [];
   for (const file of changedFiles(root, baseBranch).filter((item) => item.status === 'U')) {

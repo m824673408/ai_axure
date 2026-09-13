@@ -1,28 +1,84 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { Command } from 'commander';
 import pc from 'picocolors';
+import { formatCheck, runCheck } from './check.js';
 import { createDiff, buildSemanticPrompt, formatDiff } from './diff.js';
 import { ProtoError } from './errors.js';
 import { changedFiles, currentBranch, currentFeature, ensureClean, git, isGitRepository } from './git.js';
-import { findWorkspace } from './io.js';
+import { governanceStatus, setupGithubGovernance } from './governance.js';
+import { findWorkspace, normalizePath } from './io.js';
 import { formatLint, runLint } from './lint.js';
+import { previewEnvironment } from './preview.js';
 import { requestSemanticDiff } from './semantic.js';
+import { freezeScope, scopeLockStatus } from './scope-lock.js';
 import { startStudio } from './studio-server.js';
 import { createFeature, initializeWorkspace, loadConfig, loadProduct, loadScope, updateYamlVersion } from './workspace.js';
 
 const program = new Command();
-program.name('proto').description('AI Product Prototype Workspace CLI').version('0.1.0');
+program.name('proto').description('AI Product Prototype Workspace CLI').version('0.2.0-rc.2');
 
 program.command('init')
   .argument('[directory]', '目标目录', '.')
   .option('--no-git', '不初始化 Git 仓库')
+  .option('--github-owner <login>', 'GitHub CODEOWNER 登录名（Git 初始化模式必填）')
   .description('初始化 Prototype Workspace')
-  .action((directory: string, options: { git: boolean }) => {
-    const target = initializeWorkspace(directory, options.git);
+  .action((directory: string, options: { git: boolean; githubOwner?: string }) => {
+    if (options.git && !options.githubOwner) throw new ProtoError('Git 初始化模式必须提供 --github-owner；使用 --no-git 可创建无 Git 治理的 Workspace。');
+    const target = initializeWorkspace(directory, options.git, options.githubOwner);
     const product = loadProduct(target);
-    console.log(`Prototype Workspace initialized.\n\nProduct:\n${product.product.name}\n\nPath:\n${target}\n\nRun:\ncd "${target}"\nnpm --prefix prototype install\nnpm --prefix prototype run dev`);
+    const prototype = join(target, 'prototype');
+    const run = process.platform === 'win32'
+      ? `PowerShell:\nSet-Location -LiteralPath "${prototype}"\nnpm install\nnpm run dev\n\nCMD:\ncd /d "${prototype}"\nnpm install\nnpm run dev`
+      : `cd "${prototype}"\nnpm install\nnpm run dev`;
+    console.log(`Prototype Workspace initialized.\n\nProduct:\n${product.product.name}\n\nPath:\n${target}\n\nRun:\n${run}`);
+  });
+
+const scope = program.command('scope').description('管理当前 Feature Scope 锁');
+scope.command('status')
+  .option('--json', '输出 JSON')
+  .description('显示当前 Scope 冻结状态')
+  .action((options: { json?: boolean }) => {
+    const root = findWorkspace();
+    const id = currentFeature(root);
+    if (!id) throw new ProtoError('当前 Branch 不是 feature/*，没有活动 Scope。');
+    const output = scopeLockStatus(root, id);
+    if (options.json) return console.log(JSON.stringify(output, null, 2));
+    console.log(`SCOPE LOCK\n\nStatus: ${output.status}\nFeature: ${output.featureId}\nCurrent digest: ${output.currentDigest ?? 'Unavailable'}\nLocked digest: ${output.lockedDigest ?? 'None'}${output.reason ? `\nReason: ${output.reason}` : ''}`);
+    if (output.status !== 'LOCKED') process.exitCode = 1;
+  });
+
+scope.command('freeze')
+  .option('--json', '输出 JSON')
+  .description('确认并冻结当前 Feature Scope')
+  .action((options: { json?: boolean }) => {
+    const root = findWorkspace();
+    const id = currentFeature(root);
+    if (!id) throw new ProtoError('当前 Branch 不是 feature/*，没有可冻结的 Scope。');
+    const output = freezeScope(root, id);
+    if (options.json) return console.log(JSON.stringify(output, null, 2));
+    console.log(`Scope frozen.\n\nFeature:\n${id}\n\nDigest:\n${output.currentDigest}\n\n注意：本地锁只检测范围漂移，身份审批由 GitHub CODEOWNERS 与分支保护完成。`);
+  });
+
+const governance = program.command('governance').description('管理 GitHub 强制门禁');
+governance.command('setup')
+  .requiredOption('--github-owner <login>', 'GitHub CODEOWNER 登录名')
+  .requiredOption('--tool-ref <tag>', '公开工具仓库的不可变版本 Tag')
+  .description('写入 CODEOWNERS、固定版本 CI 和治理配置')
+  .action((options: { githubOwner: string; toolRef: string }) => {
+    const output = setupGithubGovernance(findWorkspace(), options.githubOwner, options.toolRef);
+    console.log(`GitHub governance configured.\n\nOwner:\n@${output.owner}\n\nTool:\n${output.toolRepository}#${output.toolRef}\n\nRequired status context:\nPrototype Gate / check`);
+  });
+
+governance.command('status')
+  .option('--json', '输出 JSON')
+  .description('检查本地 GitHub 治理文件是否完整且未被弱化')
+  .action((options: { json?: boolean }) => {
+    const output = governanceStatus(findWorkspace());
+    if (options.json) return console.log(JSON.stringify(output, null, 2));
+    console.log(`GITHUB GOVERNANCE\n\nStatus: ${output.status}\nOwner: ${output.owner ? `@${output.owner}` : 'Not configured'}\nTool: ${output.toolRepository && output.toolRef ? `${output.toolRepository}#${output.toolRef}` : 'Not configured'}${output.issues.length ? `\n\nIssues:\n${output.issues.map((issue) => `- ${issue.file}: ${issue.message}`).join('\n')}` : ''}`);
+    if (output.enabled && output.status !== 'READY') process.exitCode = 1;
   });
 
 program.command('context')
@@ -51,11 +107,21 @@ const feature = program.command('feature').description('管理 Feature');
 feature.command('create')
   .argument('<id>', 'Feature ID，例如 REQ-20260820-001')
   .requiredOption('--name <name>', 'Feature 名称')
+  .option('--page <pageId>', '授权页面 ID（可重复；经 Page Registry 展开为真实实现文件与 spec）', (value: string, previous: string[]) => [...previous, value], [] as string[])
   .description('创建 Feature 分支与文件')
-  .action((id: string, options: { name: string }) => {
+  .action((id: string, options: { name: string; page: string[] }) => {
     const root = findWorkspace();
-    createFeature(root, id, options.name);
-    console.log(`Feature created.\n\nFeature:\n${id}\n${options.name}\n\nBranch:\nfeature/${id}`);
+    const authorization = createFeature(root, id, options.name, options.page ?? []);
+    const lines = [`Feature created.`, ``, `Feature:`, id, options.name, ``, `Branch:`, `feature/${id}`];
+    if (authorization.pages.length > 0) {
+      lines.push(``, `Authorized pages (by Page Registry):`);
+      for (const page of authorization.pages) lines.push(`- ${page}`);
+      if (authorization.paths.length > 0) {
+        lines.push(``, `Allowed paths (generated):`);
+        for (const path of authorization.paths) lines.push(`- ${path}`);
+      }
+    }
+    console.log(lines.join('\n'));
   });
 
 feature.command('status')
@@ -71,6 +137,35 @@ feature.command('status')
     if (options.json) return console.log(JSON.stringify(output, null, 2));
     console.log(`Feature:\n${id}\n\nBranch:\n${output.branch}\n\nBase:\n${output.base}\n\nChanged Files:\n${output.changed_files}\n\nScope:\n${output.scope}`);
     if (!lint.pass) process.exitCode = 1;
+  });
+
+program.command('check')
+  .option('--json', '输出 JSON')
+  .option('--out <file>', '把 JSON 结果写入文件（供 CI 读取）')
+  .option('--no-build', '跳过第 4 段 Prototype Build')
+  .description('合并前一次性检查：Schema & Lint / Product Diff / Registry 冲突 / Prototype Build / 风险提示')
+  .action((options: { json?: boolean; out?: string; build: boolean }) => {
+    const root = findWorkspace();
+    const outputPath = options.out ? resolve(options.out) : null;
+    let ignoredPaths: string[] = [];
+    if (outputPath) {
+      if (existsSync(outputPath) && statSync(outputPath).isDirectory()) throw new ProtoError(`--out 必须是文件路径，不能是目录：${outputPath}`);
+      const relativeOutput = normalizePath(relative(root, outputPath));
+      const insideWorkspace = relativeOutput !== '..' && !relativeOutput.startsWith('../') && !isAbsolute(relativeOutput);
+      if (insideWorkspace) {
+        if (git(root, ['ls-files', '--error-unmatch', '--', relativeOutput], true)) {
+          throw new ProtoError(`--out 不允许覆盖 Git 已跟踪文件：${relativeOutput}`);
+        }
+        ignoredPaths = [relativeOutput];
+      }
+    }
+    const result = runCheck(root, { build: options.build, ignoredPaths });
+    if (outputPath) {
+      mkdirSync(dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, `${JSON.stringify(result, null, 2)}\n`, 'utf8');
+    }
+    console.log(options.json ? JSON.stringify(result, null, 2) : formatCheck(result));
+    if (!result.pass) process.exitCode = 1;
   });
 
 program.command('lint')
@@ -95,7 +190,7 @@ program.command('diff')
       return;
     }
     const diff = createDiff(root);
-    console.log(options.json ? JSON.stringify(diff, null, 2) : formatDiff(diff));
+    console.log(options.json ? JSON.stringify(diff, null, 2) : formatDiff(diff, loadConfig(root).workspace.base_branch));
   });
 
 program.command('preview')
@@ -117,7 +212,7 @@ program.command('preview')
       featureName = 'unknown (Git 状态不可读，Preview 仍继续)';
     }
     console.log(`Prototype running:\n\n${config.preview.url}\n\nFeature:\n${featureName}`);
-    const child = spawn(config.preview.command, { cwd: prototype, shell: true, stdio: 'inherit' });
+    const child = spawn(config.preview.command, { cwd: prototype, shell: true, stdio: 'inherit', env: previewEnvironment(root) });
     child.on('exit', (code) => { process.exitCode = code ?? 0; });
   });
 
@@ -130,7 +225,7 @@ program.command('studio')
   });
 
 program.command('release')
-  .argument('<version>', 'SemVer 版本，例如 0.1.0')
+  .argument('<version>', 'SemVer 版本，例如 0.2.0')
   .description('发布 main 版本并创建不可覆盖 Tag')
   .action((version: string) => {
     const root = findWorkspace();
@@ -154,7 +249,7 @@ program.command('release')
       appendFileSync(changelogPath, `\n## ${version} - ${date}\n\n- 发布 Prototype Workspace ${version}。\n`, 'utf8');
       git(root, ['add', '--', 'product/product.yaml', 'prototype.config.yaml', 'CHANGELOG.md']);
       git(root, ['-c', 'user.name=Prototype Workspace', '-c', 'user.email=prototype@local', 'commit', '-m', `chore(release): ${version}`]);
-      git(root, ['tag', '-a', tag, '-m', `Prototype Workspace ${version}`]);
+      git(root, ['-c', 'user.name=Prototype Workspace', '-c', 'user.email=prototype@local', 'tag', '-a', tag, '-m', `Prototype Workspace ${version}`]);
       console.log(`Release created.\n\nVersion:\n${version}\n\nTag:\n${tag}\n\nPush:\ngit push origin ${config.workspace.base_branch} ${tag}`);
     } catch (error) {
       for (const [path, content] of backups) writeFileSync(path, content, 'utf8');

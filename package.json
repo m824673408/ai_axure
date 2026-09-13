@@ -1,12 +1,13 @@
 {
   "name": "product-prototype-core",
-  "version": "0.1.0",
+  "version": "0.2.0-rc.2",
   "description": "基于 Git、Product Model 与 Feature Scope 的 AI 产品原型协作工作区",
   "type": "module",
   "bin": {
     "proto": "./bin/proto.js"
   },
   "files": [
+    "CHANGELOG.md",
     "bin",
     "dist",
     "schemas",
@@ -20,11 +21,11 @@
     "build:studio": "npm --workspace product-prototype-studio run build",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:package": "node scripts/package-smoke.mjs",
     "test:watch": "vitest",
     "proto": "tsx src/cli.ts",
     "verify": "npm run lint && npm run test && npm run build",
-    "prepare": "npm run build",
-    "prepack": "npm run build"
+    "prepare": "npm run build"
   },
   "engines": {
     "node": ">=20"

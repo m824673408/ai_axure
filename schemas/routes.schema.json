@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prototype-workspace.local/schemas/routes.schema.json",
+  "title": "Prototype Workspace Routes",
+  "description": "product/routes.yaml。对应运行时校验 src/schema.ts 的 checkRoutesSchema。",
+  "x-schema-version": 1,
+  "type": "object",
+  "required": ["routes"],
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "routes": {
+      "type": "object",
+      "description": "键为稳定 route id，被 navigation.page 与 Feature Scope 的 pages 引用",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["path"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^/" },
+          "module": { "type": "string", "minLength": 1, "description": "必须是 product/product.yaml 中已定义的 module id" },
+          "name": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

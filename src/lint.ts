@@ -4,6 +4,11 @@ import YAML from 'yaml';
 import { changedFiles, currentFeature } from './git.js';
 import { listFilesRecursive, normalizePath, readYaml } from './io.js';
 import { authorizePath, componentNameFromPath, isProductPath } from './scope.js';
+import { checkComponentRegistrySchema, checkNavigationSchema, checkPageRegistrySchema, checkProductSchema, checkRoutesSchema, checkScopeSchema, checkTerminologySchema } from './schema.js';
+import { duplicateCapabilityKeys, loadComponentRegistry, loadPageRegistry } from './registry.js';
+import { crossFeatureSemanticsIssues, knownProductModelKeys, scopeReferenceIssues } from './lint-rules.js';
+import { governanceLintIssue } from './governance.js';
+import { scopeLockStatus } from './scope-lock.js';
 import { loadConfig, loadNavigation, loadScope } from './workspace.js';
 import type { LintIssue, LintResult, NavigationItem } from './types.js';
 
@@ -58,30 +63,86 @@ function componentChecks(root: string, changed: ReturnType<typeof changedFiles>)
   return issues;
 }
 
-export function runLint(root: string): LintResult {
+export function runLint(root: string, options: { ignoredPaths?: string[] } = {}): LintResult {
   const config = loadConfig(root);
   const feature = currentFeature(root);
-  const changed = changedFiles(root, config.workspace.base_branch);
-  const structural = routeChecks(root);
-  const issues = [...structural.issues, ...terminologyChecks(root), ...componentChecks(root, changed)];
-  const checks = [...structural.checks, 'Terminology references', 'Component registry'];
+  const changed = changedFiles(root, config.workspace.base_branch, options.ignoredPaths);
+
+  // P0-1：先做 Schema 层校验（结构、必填项、未知字段、重复 ID、非法引用）
+  const productSchema = checkProductSchema(root);
+  const navigationSchema = checkNavigationSchema(root);
+  const routesSchema = checkRoutesSchema(root, productSchema.moduleIds);
+  const registrySchema = checkComponentRegistrySchema(root);
+  // P0-3：Page Registry 的显式交叉校验 + capability_key 重复检测
+  const pageRegistry = loadPageRegistry(root);
+  const capabilityRegistry = loadComponentRegistry(root);
+  const pageRegistryIssues = checkPageRegistrySchema(root, { routeIds: routesSchema.routeIds, moduleIds: productSchema.moduleIds, componentIds: registrySchema.componentIds });
+  const capabilityIssues: LintIssue[] = duplicateCapabilityKeys(capabilityRegistry).map((duplicate) => ({
+    code: 'L011' as const,
+    title: 'Duplicate Capability Key',
+    message: `capability_key「${duplicate.capabilityKey}」被多个组件声明：${duplicate.owners.join('、')}`,
+    file: 'components/registry.yaml',
+    field: 'components',
+    fix: '为其中一个组件改用能表达其独立能力的 capability_key，或合并这两个组件。',
+  }));
+  const schemaIssues = [...productSchema.issues, ...navigationSchema.issues, ...routesSchema.issues, ...checkTerminologySchema(root), ...registrySchema.issues, ...pageRegistryIssues, ...capabilityIssues];
+  for (const ref of navigationSchema.moduleRefs) {
+    if (productSchema.moduleIds.size > 0 && !productSchema.moduleIds.has(ref.module)) {
+      schemaIssues.push({ code: 'L009', title: 'Invalid Reference', message: `导航项引用了不存在的模块：${ref.module}`, file: 'product/navigation.yaml', field: ref.field, fix: `将 ${ref.field} 改为已定义模块 id，或在 product/product.yaml 中补充该模块。` });
+    }
+  }
+  const checks = ['Schema: Product Model', 'Schema: Navigation', 'Schema: Routes', 'Schema: Terminology', 'Schema: Component Registry', 'Schema: Page Registry', 'Capability keys'];
+
+  // 文件缺失时不再抛出，由上面的 Schema 校验给出可修复的错误
+  const hasRoutes = existsSync(join(root, 'product', 'routes.yaml'));
+  const hasNavigation = existsSync(join(root, 'product', 'navigation.yaml'));
+  const hasTerminology = existsSync(join(root, 'product', 'terminology.yaml'));
+  const structural = hasRoutes && hasNavigation ? routeChecks(root) : { checks: [] as string[], issues: [] as LintIssue[], routeIds: new Set<string>() };
+  const issues = [...schemaIssues, ...structural.issues];
+  issues.push(...(hasTerminology ? terminologyChecks(root) : []), ...(existsSync(join(root, 'components', 'registry.yaml')) ? componentChecks(root, changed) : []));
+  checks.push(...structural.checks, 'Terminology references', 'Component registry');
+  const governanceIssues = governanceLintIssue(root);
+  issues.push(...governanceIssues.map((issue) => ({ code: 'L015' as const, title: 'GitHub Governance Missing', message: issue.message, file: issue.file, fix: '运行 proto governance setup --github-owner <LOGIN> --tool-ref <TAG>，或人工恢复受支持的治理模板。' })));
+  checks.push('GitHub governance');
+  // P0-4：跨 Feature 产品语义重复（只有同一工作区存在多个 Feature 时才可能触发）
+  const crossFeatureIssues = crossFeatureSemanticsIssues(root);
+  issues.push(...crossFeatureIssues);
+  checks.push('Cross-Feature semantics');
+
   if (feature) {
-    const scope = loadScope(root, feature);
+    const scopeSchema = checkScopeSchema(root, feature);
+    issues.push(...scopeSchema.issues);
+    checks.push('Schema: Feature Scope');
+    const lock = scopeLockStatus(root, feature);
+    if (lock.status !== 'LOCKED') {
+      issues.push({ code: 'L014', title: 'Scope Lock Required', message: lock.reason ?? `Scope 锁状态为 ${lock.status}。`, file: lock.lockFile, fix: '由产品经理确认 Scope 后运行 proto scope freeze；Scope 变化后必须重新冻结并重新审批。' });
+    }
+    checks.push('Scope lock');
+    // 路径解析必须用当前分支的 Feature ID（目录名），不能用 scope.yaml 内声明的 id
+    const scope = scopeSchema.issues.length === 0 ? loadScope(root, feature) : null;
     if (scope) {
+      // P0-4：Scope 里声明了不存在的页面 / 组件 / Product Model（L012）
+      const knownPages = new Set<string>([...flattenPages(loadNavigation(root)), ...pageRegistry.entries.keys()]);
+      issues.push(...scopeReferenceIssues(feature, scope, {
+        knownPages,
+        knownComponents: registrySchema.componentIds,
+        knownProductModel: knownProductModelKeys(root),
+      }));
+      checks.push('Scope references');
       for (const file of changed) {
-        const authorization = authorizePath(file.path, scope);
+        const authorization = authorizePath(file.path, scope, pageRegistry);
         if (authorization.allowed) continue;
         if (isProductPath(file.path)) {
-          issues.push({ code: 'L006', title: 'Product Model Unauthorized', message: `当前 Feature 未授权修改 Product Model：${file.path}`, file: file.path });
+          issues.push({ code: 'L006', title: 'Product Model Unauthorized', message: `当前 Feature 未授权修改 Product Model：${file.path}`, file: file.path, fix: '将文件加入 scope.yaml 的 allowed.product_model，或撤销对 Product Model 的修改。' });
         } else {
-          issues.push({ code: 'L001', title: 'Scope Violation', message: `当前 Feature Scope 未授权修改：${file.path}`, file: file.path });
+          issues.push({ code: 'L001', title: 'Scope Violation', message: `当前 Feature Scope 未授权修改：${file.path}`, file: file.path, fix: '将文件加入 scope.yaml 的 allowed.paths / allowed.pages，或撤销该文件修改。' });
         }
       }
       checks.push('Feature scope');
     }
   }
   const unique = new Map<string, LintIssue>();
-  for (const issue of issues) unique.set(`${issue.code}:${issue.file ?? ''}:${issue.message}`, issue);
+  for (const issue of issues) unique.set(`${issue.code}:${issue.file ?? ''}:${issue.field ?? ''}:${issue.message}`, issue);
   return { pass: unique.size === 0, feature, changedFiles: changed, checks, issues: [...unique.values()] };
 }
 
@@ -92,7 +153,7 @@ export function formatLint(result: LintResult): string {
   } else {
     lines.push('FAIL');
     for (const issue of result.issues) {
-      lines.push(`✗ ${issue.code} ${issue.title}`, issue.file ? `File: ${issue.file}` : '', issue.message, '');
+      lines.push(`✗ ${issue.code} ${issue.title}`, issue.file ? `File: ${issue.file}` : '', issue.field ? `Field: ${issue.field}` : '', issue.message, issue.fix ? `Fix: ${issue.fix}` : '', '');
     }
     lines.push('Result: BLOCKED');
   }

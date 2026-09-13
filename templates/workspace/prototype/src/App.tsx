@@ -4,6 +4,7 @@ import { Button, Drawer, Layout, Menu, Spin, Tag, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { navigationModel, productModel, routeModel } from './productModel';
+import { previewContext } from './previewContext';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AttributionRulesPage = lazy(() => import('./pages/AttributionRulesPage'));
@@ -54,7 +55,7 @@ function App() {
       <Layout>
         <Header className="topbar">
           <Button className="mobile-menu-button" type="text" icon={<MenuOutlined />} aria-label="打开产品导航" onClick={() => setMobileOpen(true)} />
-          <div className="topbar-context"><BranchesOutlined aria-hidden="true" /><span>当前演示需求</span><Tag bordered={false}>REQ-DEMO-001</Tag></div>
+          <div className="topbar-context"><BranchesOutlined aria-hidden="true" /><span>{previewContext.featureId ? '当前需求' : '当前分支'}</span><Tag bordered={false}>{previewContext.featureId ?? previewContext.branch}</Tag></div>
           <Typography.Text type="secondary" className="version-label">Product v{productModel.product.version}</Typography.Text>
         </Header>
         <Content id="main-content" className="main-content" tabIndex={-1}>

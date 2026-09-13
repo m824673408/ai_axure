@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://prototype-workspace.local/schemas/navigation.schema.json",
+  "title": "Prototype Workspace Navigation",
+  "description": "product/navigation.yaml。对应运行时校验 src/schema.ts 的 checkNavigationSchema。",
+  "x-schema-version": 1,
+  "type": "object",
+  "required": ["navigation"],
+  "properties": {
+    "schema_version": { "$ref": "#/$defs/schemaVersion" },
+    "navigation": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/navItem" }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "产物 schema 版本，可省略（省略视为 1）"
+    },
+    "navItem": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "module": { "type": "string", "minLength": 1, "description": "必须是 product/product.yaml 中已定义的 module id" },
+        "page": { "type": "string", "minLength": 1, "description": "必须是 product/routes.yaml 中已定义的 route id；同一页面在导航中只能出现一次" },
+        "name": { "type": "string", "minLength": 1 },
+        "children": { "type": "array", "items": { "$ref": "#/$defs/navItem" } }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "同一导航项不能既有 page 又有 children",
+          "not": { "required": ["page", "children"] }
+        }
+      ]
+    }
+  }
+}

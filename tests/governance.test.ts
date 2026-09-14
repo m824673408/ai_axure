@@ -37,7 +37,7 @@ describe('GitHub governance', () => {
     initializeWorkspace(root, true, 'm824673408');
     let status = governanceStatus(root);
     expect(status.status).toBe('READY');
-    expect(status.toolRef).toBe('v0.2.0-rc.3');
+    expect(status.toolRef).toBe('v0.2.0-rc.4');
     expect(REQUIRED_STATUS_CONTEXT).toBe('Prototype Gate / check');
     const owners = readFileSync(join(root, '.github', 'CODEOWNERS'), 'utf8');
     for (const expected of ['/features/*/scope.yaml', '/features/*/scope.lock.json', '/product/**', '/components/registry.yaml', '/prototype.config.yaml', '/.gitignore', '/.github/**']) expect(owners).toContain(expected);
@@ -46,10 +46,11 @@ describe('GitHub governance', () => {
     expect(workflow).toContain('  check:');
     expect(workflow).toContain('node-version: 22');
     expect(workflow).toContain('PROTOTYPE_TOOL_REPOSITORY: https://github.com/m824673408/ai_axure.git');
-    expect(workflow).toContain('PROTOTYPE_TOOL_REF: v0.2.0-rc.3');
+    expect(workflow).toContain('PROTOTYPE_TOOL_REF: v0.2.0-rc.4');
     expect(workflow).toContain('git clone --depth 1 --branch "$PROTOTYPE_TOOL_REF"');
     expect(workflow).toContain('npm ci --prefix "$RUNNER_TEMP/ai_axure" --include=dev');
-    expect(workflow).toContain('npm install --global "$RUNNER_TEMP/ai_axure" --ignore-scripts');
+    expect(workflow).toContain('npm pack --prefix "$RUNNER_TEMP/ai_axure" --ignore-scripts');
+    expect(workflow).toContain('npm install --global "$RUNNER_TEMP/$TOOL_PACKAGE" --ignore-scripts');
     expect(workflow).toContain('fetch-depth: 0');
     expect(workflow).toContain('proto check --out');
     expect(workflow).toContain('if: always()');
@@ -95,6 +96,6 @@ describe('GitHub governance', () => {
     const result = run(root, ['governance', 'status', '--json']);
     expect(result.status).toBe(0);
     const body = JSON.parse(result.stdout);
-    expect(body).toMatchObject({ status: 'READY', enabled: true, owner: 'm824673408', toolRef: 'v0.2.0-rc.3' });
+    expect(body).toMatchObject({ status: 'READY', enabled: true, owner: 'm824673408', toolRef: 'v0.2.0-rc.4' });
   });
 });

@@ -24,7 +24,7 @@ function normalizeOwner(owner: string): string {
 
 function normalizeToolRef(toolRef: string): string {
   const value = toolRef.trim();
-  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) throw new ProtoError(`--tool-ref 必须是不可变版本 Tag，例如 v0.2.0-rc.3：${toolRef}`);
+  if (!/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(value)) throw new ProtoError(`--tool-ref 必须是不可变版本 Tag，例如 v0.2.0-rc.4：${toolRef}`);
   return value;
 }
 
@@ -74,7 +74,8 @@ jobs:
           git clone --depth 1 --branch "$PROTOTYPE_TOOL_REF" "$PROTOTYPE_TOOL_REPOSITORY" "$RUNNER_TEMP/ai_axure"
           npm ci --prefix "$RUNNER_TEMP/ai_axure" --include=dev --no-audit --no-fund
           npm --prefix "$RUNNER_TEMP/ai_axure" run build
-          npm install --global "$RUNNER_TEMP/ai_axure" --ignore-scripts --no-audit --no-fund
+          TOOL_PACKAGE="$(npm pack --prefix "$RUNNER_TEMP/ai_axure" --ignore-scripts --pack-destination "$RUNNER_TEMP" --silent)"
+          npm install --global "$RUNNER_TEMP/$TOOL_PACKAGE" --ignore-scripts --no-audit --no-fund
       - name: Install Prototype dependencies
         run: npm --prefix prototype install --no-audit --no-fund
       - name: Run Prototype Gate

@@ -17,7 +17,7 @@ import { startStudio } from './studio-server.js';
 import { createFeature, initializeWorkspace, loadConfig, loadProduct, loadScope, updateYamlVersion } from './workspace.js';
 
 const program = new Command();
-program.name('proto').description('AI Product Prototype Workspace CLI').version('0.2.0-rc.3');
+program.name('proto').description('AI Product Prototype Workspace CLI').version('0.2.0-rc.4');
 
 program.command('init')
   .argument('[directory]', '目标目录', '.')

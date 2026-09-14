@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0-rc.4 - 2026-09-14
+
+- GitHub 门禁改为从已构建的 tarball 全局安装 CLI，避免 npm 对本地目录全局安装时再次执行 `prepare` 并进入不支持 workspaces 的上下文。
+
 ## 0.2.0-rc.3 - 2026-09-14
 
 - 修复 GitHub Actions 从公开 Git Tag 全局安装时缺少构建依赖的问题；CI 现在在 runner 临时目录检出固定 Tag、完整构建后再安装 CLI。

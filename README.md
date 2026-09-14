@@ -21,7 +21,7 @@ npm link
 proto init E:\prototype-workspace --github-owner m824673408
 ```
 
-运行环境要求 Node.js 20+ 与 Git。当前候选版本为 `0.2.0-rc.2`。
+运行环境要求 Node.js 20+ 与 Git。当前候选版本为 `0.2.0-rc.3`。
 
 ## CLI
 
@@ -61,7 +61,7 @@ proto check
 已有 Workspace 可执行：
 
 ```powershell
-proto governance setup --github-owner m824673408 --tool-ref v0.2.0-rc.2
+proto governance setup --github-owner m824673408 --tool-ref v0.2.0-rc.3
 ```
 
 命令遇到不同的现有 CODEOWNERS、Workflow 或治理配置会拒绝覆盖并输出人工合并依据。本地文件检查不能替代 GitHub 仓库设置；`main` 仍须配置 PR、Code Owner 审批、旧审批失效、`Prototype Gate / check`、会话解决、禁止强推/删除和禁止管理员绕过。
@@ -122,7 +122,7 @@ proto diff --semantic
 
 ## Release
 
-`proto release 0.2.0` 只允许在干净的 `main` 执行。命令会运行 Lint、更新 Workspace 产品版本与 CHANGELOG、创建发布提交及 `prototype-v0.2.0` Annotated Tag，但不会 push。本工具的 RC.2 交付使用仓库 Annotated Tag `v0.2.0-rc.2`，不发布 npm。
+`proto release 0.2.0` 只允许在干净的 `main` 执行。命令会运行 Lint、更新 Workspace 产品版本与 CHANGELOG、创建发布提交及 `prototype-v0.2.0` Annotated Tag，但不会 push。本工具的 RC.3 交付使用仓库 Annotated Tag `v0.2.0-rc.3`，不发布 npm。
 
 ## 目录
 

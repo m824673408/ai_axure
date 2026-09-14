@@ -106,7 +106,7 @@ export function initializeWorkspace(targetValue: string, withGit = true, githubO
   }
   if (withGit) {
     if (!commandExists('git')) throw new ProtoError('未找到 Git，无法初始化 Workspace。');
-    if (githubOwner) setupGithubGovernance(target, githubOwner, 'v0.2.0-rc.2');
+    if (githubOwner) setupGithubGovernance(target, githubOwner, 'v0.2.0-rc.3');
     git(target, ['init', '-b', 'main']);
     git(target, ['add', '--', '.']);
     git(target, ['-c', 'user.name=Prototype Workspace', '-c', 'user.email=prototype@local', 'commit', '-m', 'chore: initialize prototype workspace']);

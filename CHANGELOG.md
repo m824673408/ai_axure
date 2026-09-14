@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0-rc.3 - 2026-09-14
+
+- 修复 GitHub Actions 从公开 Git Tag 全局安装时缺少构建依赖的问题；CI 现在在 runner 临时目录检出固定 Tag、完整构建后再安装 CLI。
+- 保持工具源码不进入业务工作区，避免 Product Diff 和 Scope Lint 被工具安装目录污染。
+
 ## 0.2.0-rc.2 - 2026-09-12
 
 - 新增确定性 Scope 锁与 `proto scope status/freeze`，L014 对缺失、错配和过期锁执行 BLOCK。

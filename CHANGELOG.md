@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.0-rc.5 - 2026-09-14
+
+- 修复 Linux runner 上 `npm pack --prefix` 退出 254；门禁改为进入已构建工具目录后生成 tarball，并在依赖安装阶段禁用重复生命周期脚本。
+
 ## 0.2.0-rc.4 - 2026-09-14
 
 - GitHub 门禁改为从已构建的 tarball 全局安装 CLI，避免 npm 对本地目录全局安装时再次执行 `prepare` 并进入不支持 workspaces 的上下文。
